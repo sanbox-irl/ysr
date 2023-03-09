@@ -1,0 +1,15 @@
+title: first_guy
+position: 189,-57
+---
+Narrator: this is the first thing we tried
+<<set $ALL_RIGHT to 3>>
+-> Let's go to second fella
+    <<jump second_fella>>
+    <<declare $ALL_RIGHT = 50>>
+-> Let's stop friend.
+===
+title: second_fella
+position: 248,147
+---
+Sarah: oh, fancy seeing you here?
+===
