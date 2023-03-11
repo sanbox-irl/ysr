@@ -7,19 +7,109 @@ use crate::YarnValue;
 /// can take and actually execute.
 #[derive(Debug)]
 pub struct YarnProgram {
-    name: String,
-    nodes: HashMap<String, Node>,
-    initial_values: HashMap<String, YarnValue>,
+    pub(crate) name: String,
+    pub(crate) nodes: HashMap<String, Node>,
+    pub(crate) initial_values: HashMap<String, YarnValue>,
 }
 
 impl YarnProgram {
-    pub fn new(program: &[u8]) -> Self {
+    /// Parses in a bytecode stream. This should be the bytecode outputted by `ysc`.
+    pub fn new(program: &[u8]) -> Result<Self, YarnProgramError> {
         // these are all very annoying traits to have outside this scope, so we leave them here.
         use crate::proto::{instruction, operand::Value, Program};
 
-        let program = {
-            use prost::Message;
-            Program::decode(program).unwrap()
+        struct OperandHandler<T>(T, usize);
+
+        impl<T: Iterator<Item = Value>> OperandHandler<T> {
+            pub fn take_str(&mut self) -> Result<String, YarnProgramError> {
+                const EXPECTED: &str = "String";
+
+                match self.0.next() {
+                    Some(Value::String(str)) => Ok(str),
+                    Some(Value::Bool(_)) => Err(YarnProgramError::UnexpectedOperandKind(
+                        UnexpectedOperandKind {
+                            idx: self.1,
+                            expected: EXPECTED,
+                            found: "bool",
+                        },
+                    )),
+                    Some(Value::Float(_)) => Err(YarnProgramError::UnexpectedOperandKind(
+                        UnexpectedOperandKind {
+                            idx: self.1,
+                            expected: EXPECTED,
+                            found: "f32",
+                        },
+                    )),
+                    None => Err(YarnProgramError::MissingOperand {
+                        idx: self.1,
+                        expected: EXPECTED,
+                    }),
+                }
+            }
+
+            fn take_f32(&mut self) -> Result<f32, YarnProgramError> {
+                const EXPECTED: &str = "f32";
+
+                match self.0.next() {
+                    Some(Value::Float(v)) => Ok(v),
+                    Some(Value::String(_)) => Err(YarnProgramError::UnexpectedOperandKind(
+                        UnexpectedOperandKind {
+                            idx: self.1,
+                            expected: EXPECTED,
+                            found: "String",
+                        },
+                    )),
+                    Some(Value::Bool(_)) => Err(YarnProgramError::UnexpectedOperandKind(
+                        UnexpectedOperandKind {
+                            idx: self.1,
+                            expected: EXPECTED,
+                            found: "bool",
+                        },
+                    )),
+                    None => Err(YarnProgramError::MissingOperand {
+                        idx: self.1,
+                        expected: EXPECTED,
+                    }),
+                }
+            }
+
+            fn take_bool(&mut self) -> Result<bool, YarnProgramError> {
+                const EXPECTED: &str = "bool";
+
+                match self.0.next() {
+                    Some(Value::Bool(v)) => Ok(v),
+                    Some(Value::String(_)) => Err(YarnProgramError::UnexpectedOperandKind(
+                        UnexpectedOperandKind {
+                            idx: self.1,
+                            expected: EXPECTED,
+                            found: "str",
+                        },
+                    )),
+                    Some(Value::Float(_)) => Err(YarnProgramError::UnexpectedOperandKind(
+                        UnexpectedOperandKind {
+                            idx: self.1,
+                            expected: EXPECTED,
+                            found: "f32",
+                        },
+                    )),
+                    None => Err(YarnProgramError::MissingOperand {
+                        idx: self.1,
+                        expected: EXPECTED,
+                    }),
+                }
+            }
+
+            fn take_floaty_usize(&mut self) -> Result<usize, YarnProgramError> {
+                self.take_f32().map(|v| v as usize)
+            }
+        }
+
+        // we use this horrible syntax because importing `prost::Message` makes autocomplete much worse in this file.
+        let program = match <Program as prost::Message>::decode(program) {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(YarnProgramError::DecodeErr(e));
+            }
         };
 
         let mut output_nodes = HashMap::new();
@@ -27,67 +117,40 @@ impl YarnProgram {
         for (node_name, node) in program.nodes {
             // first up, let's convert the instructions
             let mut instructions = vec![];
-            for crate::proto::Instruction { opcode, operands } in node.instructions {
-                let opcode = instruction::OpCode::from_i32(opcode).unwrap();
-                let mut operands = operands.into_iter();
+            for (i, raw_instruction) in node.instructions.into_iter().enumerate() {
+                let Some(opcode) = instruction::OpCode::from_i32(raw_instruction.opcode) else {
+                    return Err(YarnProgramError::UnexpectedOpCode { found: raw_instruction.opcode, idx: i });
+                };
+                let mut operands = OperandHandler(
+                    raw_instruction
+                        .operands
+                        .into_iter()
+                        .map(|v| v.value.expect("operand was null")),
+                    i,
+                );
 
                 let instruction = match opcode {
-                    instruction::OpCode::JumpTo => {
-                        let Some(Value::String(str)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
-                        Instruction::JumpTo(str)
-                    }
+                    instruction::OpCode::JumpTo => Instruction::JumpTo(operands.take_str()?),
                     instruction::OpCode::Jump => Instruction::Jump,
-                    instruction::OpCode::RunLine => {
-                        let Some(Value::String(string_key)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
-
-                        let Some(Value::Float(substitution_count)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
-
-                        Instruction::RunLine(Line {
-                            string_key,
-                            substitution_count: substitution_count as usize,
-                        })
-                    }
-                    instruction::OpCode::RunCommand => {
-                        let Some(Value::String(f_string)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
-
-                        let Some(Value::Float(param_count)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
-
-                        Instruction::Command(Command {
-                            f_string,
-                            parameter_count: param_count as usize,
-                        })
-                    }
+                    instruction::OpCode::RunLine => Instruction::RunLine(Line {
+                        string_key: operands.take_str()?,
+                        substitution_count: operands.take_floaty_usize()?,
+                    }),
+                    instruction::OpCode::RunCommand => Instruction::Command(Command {
+                        f_string: operands.take_str()?,
+                        parameter_count: operands.take_floaty_usize()?,
+                    }),
                     instruction::OpCode::AddOption => {
-                        let Some(Value::String(string_key)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
-
-                        let Some(Value::String(destination)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
-
-                        let Some(Value::Float(substitution_count)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
-
-                        let Some(Value::Bool(has_condition)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
+                        // the order of operands is a little odd, so we've got to be explicit here...
+                        let string_key = operands.take_str()?;
+                        let destination = operands.take_str()?;
+                        let substitution_count = operands.take_floaty_usize()?;
+                        let has_condition = operands.take_bool()?;
 
                         Instruction::AddOption(OptionData {
                             line: Line {
                                 string_key,
-                                substitution_count: substitution_count as usize,
+                                substitution_count,
                             },
                             destination,
                             has_condition,
@@ -95,56 +158,21 @@ impl YarnProgram {
                     }
                     instruction::OpCode::ShowOptions => Instruction::ShowOptions,
                     instruction::OpCode::PushString => {
-                        let Some(Value::String(str)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
-
-                        Instruction::PushString(str)
+                        Instruction::PushString(operands.take_str()?)
                     }
-                    instruction::OpCode::PushFloat => {
-                        let Some(Value::Float(f)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
-
-                        Instruction::PushFloat(f)
-                    }
-                    instruction::OpCode::PushBool => {
-                        let Some(Value::Bool(b)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
-
-                        Instruction::PushBool(b)
-                    }
+                    instruction::OpCode::PushFloat => Instruction::PushFloat(operands.take_f32()?),
+                    instruction::OpCode::PushBool => Instruction::PushBool(operands.take_bool()?),
                     instruction::OpCode::PushNull => {
-                        panic!("`push_null` is not supported in ysc 2.2. please recompile.");
+                        return Err(YarnProgramError::UnsupportedOpCode(raw_instruction.opcode));
                     }
                     instruction::OpCode::JumpIfFalse => {
-                        let Some(Value::String(str)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
-                        Instruction::JumpIfFalse(str)
+                        Instruction::JumpIfFalse(operands.take_str()?)
                     }
                     instruction::OpCode::Pop => Instruction::Pop,
-                    instruction::OpCode::CallFunc => {
-                        let Some(Value::String(function_name)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
-
-                        Instruction::CallFunc(function_name)
-                    }
-                    instruction::OpCode::PushVariable => {
-                        let Some(Value::String(variable_name)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
-
-                        Instruction::PushVar(variable_name)
-                    }
+                    instruction::OpCode::CallFunc => Instruction::CallFunc(operands.take_str()?),
+                    instruction::OpCode::PushVariable => Instruction::PushVar(operands.take_str()?),
                     instruction::OpCode::StoreVariable => {
-                        let Some(Value::String(variable_name)) = operands.next().and_then(|v| v.value) else {
-                            panic!("unexpected operand kind");
-                        };
-
-                        Instruction::StoreVar(variable_name)
+                        Instruction::StoreVar(operands.take_str()?)
                     }
                     instruction::OpCode::Stop => Instruction::Stop,
                     instruction::OpCode::RunNode => Instruction::RunNode,
@@ -187,12 +215,41 @@ impl YarnProgram {
             })
             .collect();
 
-        Self {
+        Ok(Self {
             name: program.name,
             nodes: output_nodes,
             initial_values,
-        }
+        })
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum YarnProgramError {
+    #[error("unexpected opcode `{found}` at index `{idx}`")]
+    // it's an i32 since the C# emits i32s, and if it emits a negative number, it'd be good to know about that
+    UnexpectedOpCode { found: i32, idx: usize },
+
+    #[error(transparent)]
+    DecodeErr(prost::DecodeError),
+
+    #[error(
+        "op-code {0} is no longer supported. please recompile your source with a newer compiler."
+    )]
+    UnsupportedOpCode(i32),
+
+    #[error(transparent)]
+    UnexpectedOperandKind(UnexpectedOperandKind),
+
+    #[error("unexpected operand kind at index `{idx}`: expected `{expected}`")]
+    MissingOperand { idx: usize, expected: &'static str },
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("unexpected operand kind at index `{idx}`: expected `{expected}`, found `{found}`")]
+pub struct UnexpectedOperandKind {
+    idx: usize,
+    expected: &'static str,
+    found: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq)]

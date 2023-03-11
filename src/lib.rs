@@ -1,6 +1,8 @@
 mod byte_code;
 mod proto;
 
+pub use byte_code::{YarnProgram, YarnProgramError};
+
 #[derive(Debug)]
 pub struct YarnRunner {}
 
