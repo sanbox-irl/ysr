@@ -306,7 +306,7 @@ pub(crate) struct OptionData {
 mod tests {
     use super::*;
 
-    const TEST_PROGRAM: &[u8] = include_bytes!("../proto/test.yarnc");
+    const TEST_PROGRAM: &[u8] = include_bytes!("../test_input/test.yarnc");
 
     #[test]
     fn test() {

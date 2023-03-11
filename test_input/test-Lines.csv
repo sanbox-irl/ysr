@@ -1,0 +1,8 @@
+id,text,file,node,lineNumber
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-0,Narrator: this is the first thing we tried,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,4
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-1,Hol up. Check out that sick $ALL_RIGHT guy.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,6
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-2,"Okay, now we'll get goin.",/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,7
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-3,Now do it again.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,9
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-4,Let's go to second fella,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,11
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-5,Let's stop friend.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,15
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-second_fella-6,"Sarah: oh, fancy seeing you here?",/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,second_fella,20

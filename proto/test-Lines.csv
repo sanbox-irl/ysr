@@ -1,5 +1,0 @@
-id,text,file,node,lineNumber
-line:/Users/jjspira/Documents/Rust/yarn-spinner/proto/test.yarn-first_guy-0,Narrator: this is the first thing we tried,/Users/jjspira/Documents/Rust/yarn-spinner/proto/test.yarn,first_guy,4
-line:/Users/jjspira/Documents/Rust/yarn-spinner/proto/test.yarn-first_guy-1,Let's go to second fella,/Users/jjspira/Documents/Rust/yarn-spinner/proto/test.yarn,first_guy,6
-line:/Users/jjspira/Documents/Rust/yarn-spinner/proto/test.yarn-first_guy-2,Let's stop friend.,/Users/jjspira/Documents/Rust/yarn-spinner/proto/test.yarn,first_guy,10
-line:/Users/jjspira/Documents/Rust/yarn-spinner/proto/test.yarn-second_fella-3,"Sarah: oh, fancy seeing you here?",/Users/jjspira/Documents/Rust/yarn-spinner/proto/test.yarn,second_fella,15
