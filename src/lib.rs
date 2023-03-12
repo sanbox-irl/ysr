@@ -12,21 +12,21 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
 mod byte_code;
+mod localization_handler;
 mod proto;
 mod storage;
-mod localization_handler;
 
+pub use byte_code::{YarnProgram, YarnProgramError};
+pub use localization_handler::LocalizationHandler;
+pub use storage::YarnStorage;
+
+use byte_code::Instruction;
 // utility
 mod type_names {
     pub const F32: &str = "f32";
     pub const STR: &str = "str";
     pub const BOOL: &str = "bool";
 }
-
-use byte_code::Instruction;
-pub use byte_code::{YarnProgram, YarnProgramError};
-
-pub use storage::YarnStorage;
 
 /// A Virtual Machine which executes a [YarnProgram].
 #[derive(Debug)]
@@ -52,7 +52,9 @@ impl YarnRunner {
         &self.program
     }
 
-    pub fn set_node(&mut self, node_name: String) -> Result<(), NodeDoesNotExist> {
+    pub fn set_node(&mut self, node_name: impl Into<String>) -> Result<(), NodeDoesNotExist> {
+        let node_name = node_name.into();
+
         if !self.program.nodes.contains_key(&node_name) {
             return Err(NodeDoesNotExist(node_name));
         }
@@ -76,7 +78,7 @@ impl YarnRunner {
     ) -> Result<Option<ExecutionOutput>, ExecutionError> {
         let Some(mut state) = self.state.as_mut() else {
             return Err(ExecutionError::NotReadyToExecute(NotReadyToExecute::NoNodeSelected));
-         };
+        };
 
         if matches!(
             self.runner_state,
@@ -169,6 +171,15 @@ impl YarnRunner {
                     });
                 }
                 Instruction::ShowOptions => {
+                    // switch our state over...
+                    self.runner_state = RunnerState::WaitingForOptionSelection(
+                        state
+                            .options
+                            .iter()
+                            .map(|v| v.destination.clone())
+                            .collect(),
+                    );
+
                     // give em da options!
                     return Ok(Some(ExecutionOutput::Options(std::mem::take(
                         &mut state.options,
@@ -233,6 +244,32 @@ impl YarnRunner {
         // This also means we reached the end of our program's execution!
         Ok(None)
     }
+
+    /// Tries to set the option
+    ///
+    /// ## Errors
+    /// - If we are not in WaitingForOptionSelection
+    /// - If the selection given is `>= options.len()` (ie, you chose 4 out of 2 options).
+    pub fn select_option(&mut self, selection: usize) -> Result<(), OptionSelectionError> {
+        let RunnerState::WaitingForOptionSelection(destinations) = &mut self.runner_state else {
+            return Err(OptionSelectionError::UnexpectedOptionSelection);
+        };
+
+        let Some(destination_name) = destinations.get(selection) else {
+            return Err(OptionSelectionError::OptionSelectionTooHigh {
+                input: selection,
+                count: destinations.len(),
+            });
+        };
+
+        let state = self.state.as_mut().expect("internal yarn-runner error");
+        state
+            .stack
+            .push(YarnValue::Str(destination_name.to_owned()));
+        self.runner_state = RunnerState::WaitingForContinue;
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -251,16 +288,13 @@ pub enum ExecutionOutput {
 }
 
 /// This represents the current state of the [YarnRunner].
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum RunnerState {
     /// The [YarnRunner] is not running a node.
     Stopped,
 
     /// The [YarnRunner] is waiting for an option to be selected with `select_option`.
-    WaitingForOptionSelection {
-        selection: Option<usize>,
-        count: usize,
-    },
+    WaitingForOptionSelection(Vec<String>),
 
     /// The [YarnRunner] is waiting for `continue` to be called.
     WaitingForContinue,
@@ -351,6 +385,12 @@ pub struct YarnOption {
     pub(crate) condition_passed: Option<bool>,
 }
 
+impl YarnOption {
+    pub fn line(&self) -> &YarnLine {
+        &self.line
+    }
+}
+
 /// Applies substitutions to a given line as needed.
 pub fn apply_arguments_in_substition(f_string: &str, subs: &[String]) -> String {
     let mut output = f_string.to_owned();
@@ -394,4 +434,12 @@ pub enum NotReadyToExecute {
 pub struct ConversionError {
     target_type: &'static str,
     found_type: &'static str,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum OptionSelectionError {
+    #[error("runner is not in state `WaitingForOptionSelection`")]
+    UnexpectedOptionSelection,
+    #[error("invalid selection: {input} but len was {count}")]
+    OptionSelectionTooHigh { input: usize, count: usize },
 }

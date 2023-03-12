@@ -4,9 +4,15 @@ use crate::YarnValue;
 
 /// This is a storage mechanism for yarn variables. It is a wrapper
 /// around a HashMap for now, but in the future, that might change.
+#[derive(Debug, Default)]
 pub struct YarnStorage(HashMap<String, YarnValue>);
 
 impl YarnStorage {
+    /// Creates a new YarnStorage
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Convenience method to insert an f32 into the map.
     pub fn insert_f32(&mut self, key: String, value: f32) -> Option<YarnValue> {
         self.insert(key, YarnValue::F32(value))

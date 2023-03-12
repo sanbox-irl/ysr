@@ -306,17 +306,16 @@ pub(crate) struct OptionData {
     pub(crate) has_condition: bool,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
 
-    const TEST_PROGRAM: &[u8] = include_bytes!("../test_input/test.yarnc");
+//     const TEST_PROGRAM: &[u8] = include_bytes!("../test_input/test.yarnc");
 
-    #[test]
-    fn test() {
-        let yarn_runner = YarnProgram::new(TEST_PROGRAM);
-        println!("{:#?}", yarn_runner);
+//     #[test]
+//     fn test() {
+//         let yarn_runner = YarnProgram::new(TEST_PROGRAM);
 
-        panic!()
-    }
-}
+//         panic!()
+//     }
+// }

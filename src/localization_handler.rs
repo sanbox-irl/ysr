@@ -8,29 +8,31 @@ impl LocalizationHandler {
     pub fn new(csv_str: &str) -> Self {
         let mut local = HashMap::new();
 
-        // skip the first line -- it's the header, but we know the header already
-        for line in csv_str.lines().skip(1) {
-            let mut split = line.split(',');
-
-            let id = split.next().unwrap();
-            let text = split.next().unwrap();
-
-            local.insert(id.to_owned(), text.to_owned());
+        for record in csv::Reader::from_reader(csv_str.as_bytes())
+            .records()
+            .filter_map(|v| v.ok())
+        {
+            local.insert(
+                record.get(0).unwrap().to_owned(),
+                record.get(1).unwrap().to_owned(),
+            );
         }
 
         Self(local)
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    /// Finds a given line based on the key
+    pub fn find_line(&self, line_key: &str) -> Option<&String> {
+        self.0.get(line_key)
+    }
 
-    #[test]
-    fn basic() {
-        let local = LocalizationHandler::new(include_str!("../test_input/test-Lines.csv"));
+    /// Finds the right line based on the key
+    pub fn localize(&self, line: &crate::YarnLine) -> Option<String> {
+        let txt_base = self.0.get(&line.string_key)?;
 
-        println!("{:#?}", local);
-        panic!()
+        Some(crate::apply_arguments_in_substition(
+            txt_base,
+            &line.substitutions,
+        ))
     }
 }
