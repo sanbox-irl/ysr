@@ -13,6 +13,7 @@
 
 mod byte_code;
 mod proto;
+mod storage;
 
 // utility
 mod type_names {
@@ -21,17 +22,16 @@ mod type_names {
     pub const BOOL: &str = "bool";
 }
 
-use std::collections::HashMap;
-
 use byte_code::Instruction;
 pub use byte_code::{YarnProgram, YarnProgramError};
+
+pub use storage::YarnStorage;
 
 /// A Virtual Machine which executes a [YarnProgram] via `Iterator`.
 #[derive(Debug)]
 pub struct YarnRunner {
     program: YarnProgram,
     runner_state: RunnerState,
-    storage: HashMap<String, YarnValue>,
 
     state: Option<State>,
 }
@@ -41,7 +41,6 @@ impl YarnRunner {
     pub fn new(program: YarnProgram) -> Self {
         Self {
             program,
-            storage: HashMap::new(),
             runner_state: RunnerState::Stopped,
             state: None,
         }
@@ -70,7 +69,10 @@ impl YarnRunner {
         Ok(())
     }
 
-    pub fn execute(&mut self) -> Result<Option<ExecutionOutput>, ExecutionError> {
+    pub fn execute(
+        &mut self,
+        storage: &mut YarnStorage,
+    ) -> Result<Option<ExecutionOutput>, ExecutionError> {
         let Some(mut state) = self.state.as_mut() else {
             return Err(ExecutionError::NotReadyToExecute(NotReadyToExecute::NoNodeSelected));
          };
@@ -187,7 +189,7 @@ impl YarnRunner {
                     panic!("we don't support functions yet")
                 }
                 Instruction::PushVar(v) => {
-                    let value = match self.storage.get(v) {
+                    let value = match storage.get(v) {
                         Some(v) => v,
                         None => {
                             // okay let's check the default type listings
@@ -203,7 +205,7 @@ impl YarnRunner {
                 Instruction::StoreVar(value_name) => {
                     let value = state.stack.last().expect("must handle").clone();
 
-                    self.storage.insert(value_name.clone(), value);
+                    storage.insert(value_name.clone(), value);
                 }
                 Instruction::Stop => {
                     self.runner_state = RunnerState::Stopped;

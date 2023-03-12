@@ -2,6 +2,7 @@ title: first_guy
 position: 189,-57
 ---
 Narrator: this is the first thing we tried
+<<declare $UNDECLARED_THING = "second_fella">>
 <<declare $ALL_RIGHT = 50>>
 Hol up. Check out that sick $ALL_RIGHT guy.
 Okay, now we'll get goin.
@@ -10,7 +11,7 @@ Now do it again.
 
 -> Let's go to second fella
     <<set $ALL_RIGHT to 3>>
-    <<wait $ALL_RIGHT>>
+    <<wait {$ALL_RIGHT}>>
     <<jump {$UNDECLARED_THING}>>
 -> Let's stop friend.
 ===
