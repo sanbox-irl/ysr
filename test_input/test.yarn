@@ -1,14 +1,23 @@
 title: first_guy
-position: 189,-57
+position: -103,39
 ---
-Narrator: this is a basic line of dialogue.
-Character: And here's a second line.
-    -> Nice, I like those lines.
-    -> I hated those lines to be totally honest with you.
-        <<jump second_fella>>
+<<declare $APPLES to false>>
+Narrator: This is a simple line of a dialogue.
+Character: Here are options.
+    << jump opts >>
 ===
-title: second_fella
-position: 248,147
+title: opts
+position: -65,306
 ---
-Sarah: oh, fancy seeing you here?
+    -> Great options, but let's stop.
+    -> Give me $APPLES true?
+        << set $APPLES = true >>
+        << jump opts >>
+    -> Do you have any other character to show me? I know I need $APPLES to be true for this. <<if $APPLES>>
+        <<jump end_of_line>>
+===
+title: end_of_line
+position: 280,268
+---
+Fancy them apples!
 ===

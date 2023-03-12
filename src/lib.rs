@@ -389,6 +389,11 @@ impl YarnOption {
     pub fn line(&self) -> &YarnLine {
         &self.line
     }
+
+    /// Returns an option if there is a condition at all.
+    pub fn condition_passed(&self) -> Option<bool> {
+        self.condition_passed
+    }
 }
 
 /// Applies substitutions to a given line as needed.

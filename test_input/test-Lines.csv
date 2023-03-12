@@ -1,6 +1,7 @@
 id,text,file,node,lineNumber
-line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-0,Narrator: this is a basic line of dialogue.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,4
-line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-1,Character: And here's a second line.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,5
-line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-2,"Nice, I like those lines.",/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,6
-line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-3,I hated those lines to be totally honest with you.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,7
-line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-second_fella-4,"Sarah: oh, fancy seeing you here?",/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,second_fella,13
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-0,Narrator: This is a simple line of a dialogue.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,4
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-1,Character: Here are options.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,5
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-opts-2,"Great options, but let's stop.",/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,opts,10
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-opts-3,Give me $APPLES true?,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,opts,11
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-opts-4,Do you have any other character to show me? I know I need $APPLES to be true for this.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,opts,14
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-end_of_line-5,Fancy them apples!,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,end_of_line,20

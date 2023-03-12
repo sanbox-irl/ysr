@@ -27,7 +27,14 @@ fn main() {
                 let mut selection = dialoguer::Select::new();
 
                 for opt in opts {
-                    selection.item(localization_handler.localize(opt.line()).unwrap());
+                    let v = localization_handler.localize(opt.line()).unwrap();
+                    let v = match opt.condition_passed() {
+                        Some(true) | None => v,
+                        Some(false) => {
+                            format!("{} (DISABLED)", v)
+                        }
+                    };
+                    selection.item(v);
                 }
 
                 let selection = selection.interact_on(&console).unwrap();
