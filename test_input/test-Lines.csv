@@ -1,8 +1,6 @@
 id,text,file,node,lineNumber
-line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-0,Narrator: this is the first thing we tried,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,4
-line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-1,Hol up. Check out that sick $ALL_RIGHT guy.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,7
-line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-2,"Okay, now we'll get goin.",/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,8
-line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-3,Now do it again.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,10
-line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-4,Let's go to second fella,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,12
-line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-5,Let's stop friend.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,16
-line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-second_fella-6,"Sarah: oh, fancy seeing you here?",/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,second_fella,21
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-0,Narrator: this is a basic line of dialogue.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,4
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-1,Character: And here's a second line.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,5
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-2,"Nice, I like those lines.",/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,6
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-first_guy-3,I hated those lines to be totally honest with you.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,first_guy,7
+line:/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn-second_fella-4,"Sarah: oh, fancy seeing you here?",/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,second_fella,13

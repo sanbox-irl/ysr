@@ -14,6 +14,7 @@
 mod byte_code;
 mod proto;
 mod storage;
+mod localization_handler;
 
 // utility
 mod type_names {
@@ -27,7 +28,7 @@ pub use byte_code::{YarnProgram, YarnProgramError};
 
 pub use storage::YarnStorage;
 
-/// A Virtual Machine which executes a [YarnProgram] via `Iterator`.
+/// A Virtual Machine which executes a [YarnProgram].
 #[derive(Debug)]
 pub struct YarnRunner {
     program: YarnProgram,
