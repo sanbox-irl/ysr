@@ -1,5 +1,4 @@
 #![doc = include_str!("../README.md")]
-// #![cfg_attr(not(feature = "std"), doc = "no-std stand in")]
 #![deny(unsafe_code)]
 #![deny(rust_2018_idioms)]
 // #![deny(missing_docs)]
@@ -8,10 +7,10 @@
 // #![deny(clippy::missing_errors_doc)]
 // #![warn(clippy::missing_panics_doc)]
 #![warn(clippy::todo)]
-#![warn(clippy::undocumented_unsafe_blocks)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
 mod byte_code;
+mod command_handler;
 mod localization_handler;
 mod proto;
 mod storage;
@@ -42,7 +41,7 @@ impl YarnRunner {
     pub fn new(program: YarnProgram) -> Self {
         Self {
             program,
-            runner_state: RunnerState::Stopped,
+            runner_state: RunnerState::Ready,
             state: None,
         }
     }
@@ -67,7 +66,7 @@ impl YarnRunner {
             options: vec![],
         });
 
-        self.runner_state = RunnerState::WaitingForContinue;
+        self.runner_state = RunnerState::Ready;
 
         Ok(())
     }
@@ -80,13 +79,21 @@ impl YarnRunner {
             return Err(ExecutionError::NotReadyToExecute(NotReadyToExecute::NoNodeSelected));
         };
 
-        if matches!(
-            self.runner_state,
-            RunnerState::WaitingForOptionSelection { .. }
-        ) {
-            return Err(ExecutionError::NotReadyToExecute(
-                NotReadyToExecute::WaitingForOptionSelection,
-            ));
+        match self.runner_state {
+            // the issue is whether we've got a state really
+            RunnerState::WaitingForOptionSelection(_) => {
+                return Err(ExecutionError::NotReadyToExecute(
+                    NotReadyToExecute::WaitingForOptionSelection,
+                ));
+            }
+            RunnerState::WaitingForFunctionReturn => {
+                return Err(ExecutionError::NotReadyToExecute(
+                    NotReadyToExecute::WaitingForFunctionReturn,
+                ));
+            }
+            RunnerState::Ready => {
+                // good to go here!
+            }
         }
 
         let mut node = self
@@ -197,8 +204,21 @@ impl YarnRunner {
                 Instruction::Pop => {
                     state.stack.pop();
                 }
-                Instruction::CallFunc(func_call) => {
-                    panic!("we don't support functions yet")
+                Instruction::CallFunc(function_name) => {
+                    let param_count = state.stack.pop().unwrap().try_to_f32()? as usize;
+
+                    let mut parameters = vec![];
+
+                    for _ in 0..param_count {
+                        parameters.push(state.stack.pop().unwrap());
+                    }
+
+                    self.runner_state = RunnerState::WaitingForFunctionReturn;
+
+                    return Ok(Some(ExecutionOutput::Function(FuncData {
+                        function_name: function_name.clone(),
+                        parameters,
+                    })));
                 }
                 Instruction::PushVar(v) => {
                     let value = match storage.get(v) {
@@ -220,7 +240,6 @@ impl YarnRunner {
                     storage.insert(value_name.clone(), value);
                 }
                 Instruction::Stop => {
-                    self.runner_state = RunnerState::Stopped;
                     self.state = None;
 
                     break;
@@ -245,7 +264,7 @@ impl YarnRunner {
         Ok(None)
     }
 
-    /// Tries to set the option
+    /// Tries to set the option selection.
     ///
     /// ## Errors
     /// - If we are not in WaitingForOptionSelection
@@ -266,7 +285,19 @@ impl YarnRunner {
         state
             .stack
             .push(YarnValue::Str(destination_name.to_owned()));
-        self.runner_state = RunnerState::WaitingForContinue;
+        self.runner_state = RunnerState::Ready;
+
+        Ok(())
+    }
+
+    pub fn return_function(&mut self, value: YarnValue) -> Result<(), UnexpectedFunctionReturn> {
+        if self.runner_state != RunnerState::WaitingForFunctionReturn {
+            return Err(UnexpectedFunctionReturn);
+        };
+
+        let state = self.state.as_mut().expect("internal yarn-runner error");
+        state.stack.push(value);
+        self.runner_state = RunnerState::Ready;
 
         Ok(())
     }
@@ -285,19 +316,29 @@ pub enum ExecutionOutput {
     Line(YarnLine),
     Options(Vec<YarnOption>),
     Command(String),
+    Function(FuncData),
+}
+
+/// The data of a function call, such as `<< if roll(6) >>`
+#[derive(Debug)]
+pub struct FuncData {
+    /// The function name. In the example `roll(6)`, this would be `"roll"`.
+    pub function_name: String,
+    /// The parameters given by the user. This is not necessarily the correct amount of parameters.
+    pub parameters: Vec<YarnValue>,
 }
 
 /// This represents the current state of the [YarnRunner].
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum RunnerState {
-    /// The [YarnRunner] is not running a node.
-    Stopped,
+    /// The [YarnRunner] is ready for `execute` to be called.
+    Ready,
 
     /// The [YarnRunner] is waiting for an option to be selected with `select_option`.
     WaitingForOptionSelection(Vec<String>),
 
-    /// The [YarnRunner] is waiting for `continue` to be called.
-    WaitingForContinue,
+    /// The [YarnRunner] is waiting for a function dispatch to return.
+    WaitingForFunctionReturn,
 }
 
 /// Yarn supports three kinds of values: f32s, bools, and Strings.
@@ -430,6 +471,8 @@ pub struct NodeDoesNotExist(String);
 pub enum NotReadyToExecute {
     #[error("waiting for option to be selected. call `select_option`")]
     WaitingForOptionSelection,
+    #[error("waiting for a function to return a value. call `return_function`")]
+    WaitingForFunctionReturn,
     #[error("no node selected. call `set_node`")]
     NoNodeSelected,
 }
@@ -448,3 +491,7 @@ pub enum OptionSelectionError {
     #[error("invalid selection: {input} but len was {count}")]
     OptionSelectionTooHigh { input: usize, count: usize },
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("runner is not in state `WaitingForFunctionReturn")]
+pub struct UnexpectedFunctionReturn;

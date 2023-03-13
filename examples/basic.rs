@@ -41,6 +41,9 @@ fn main() {
                 yarn_runner.select_option(selection).unwrap();
             }
             ExecutionOutput::Command(cmd) => todo!(),
+            ExecutionOutput::Function(function) => {
+                
+            },
         }
     }
 
