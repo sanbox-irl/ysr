@@ -16,6 +16,7 @@ mod proto;
 mod storage;
 
 pub use byte_code::{YarnProgram, YarnProgramError};
+pub use command_handler::*;
 pub use localization_handler::LocalizationHandler;
 pub use storage::YarnStorage;
 

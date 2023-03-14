@@ -2,6 +2,7 @@ title: first_guy
 position: -103,39
 ---
 <<declare $APPLES to false>>
+<<declare $ROLLED to 0>>
 Narrator: This is a simple line of a dialogue.
 Character: Here are options.
     << jump opts >>
@@ -12,6 +13,8 @@ position: -65,306
     -> Great options, but let's stop.
     -> Give me $APPLES true?
         << set $APPLES = true >>
+        << set $ROLLED to dice(10)>>
+        The value of our rolled variable is {$ROLLED}.
         << jump opts >>
     -> Do you have any other character to show me? I know I need $APPLES to be true for this. <<if $APPLES>>
         <<jump end_of_line>>

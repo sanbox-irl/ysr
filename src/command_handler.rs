@@ -6,10 +6,10 @@ use crate::{FuncData, YarnValue};
 /// and users must handle this themselves.
 pub fn handle_default_functions(func_data: &FuncData) -> Option<Result<YarnValue, FuncError>> {
     if is_default_function(&func_data.function_name) {
-        handle_known_default_function(func_data)
+        Some(handle_known_default_function(func_data))
+    } else {
+        None
     }
-
-    todo!()
 }
 
 pub fn is_default_function(func_name: &str) -> bool {
@@ -35,13 +35,27 @@ pub fn is_default_function(func_name: &str) -> bool {
 fn handle_known_default_function(func_data: &FuncData) -> Result<YarnValue, FuncError> {
     fn param_count_is(params: &[YarnValue], expected: usize) -> Result<(), FuncError> {
         if params.len() != expected {
-            return Err(FuncError::ParameterMismatch {
+            return Err(FuncError::UnexpectedParamCount {
                 expected,
                 found: params.len(),
             });
         }
 
         Ok(())
+    }
+
+    fn extract_f32(param: &YarnValue) -> Result<f32, FuncError> {
+        match param {
+            YarnValue::Bool(_) => Err(FuncError::UnexpectedParamType {
+                expected: crate::type_names::F32,
+                found: crate::type_names::BOOL,
+            }),
+            YarnValue::Str(_) => Err(FuncError::UnexpectedParamType {
+                expected: crate::type_names::F32,
+                found: crate::type_names::STR,
+            }),
+            YarnValue::F32(v) => Ok(*v),
+        }
     }
 
     match func_data.function_name.as_str() {
@@ -59,27 +73,108 @@ fn handle_known_default_function(func_data: &FuncData) -> Result<YarnValue, Func
         "random_range" => {
             param_count_is(&func_data.parameters, 2)?;
 
-            Ok(YarnValue::F32(rand::thread_rng().gen_range(0.0..1.0)))
+            let bottom = extract_f32(&func_data.parameters[0])?;
+            let top = extract_f32(&func_data.parameters[1])?;
+
+            Ok(YarnValue::F32(rand::thread_rng().gen_range(bottom..top)))
         }
         "dice" => {
-            todo!()
+            param_count_is(&func_data.parameters, 1)?;
+            let top = extract_f32(&func_data.parameters[0])? as u32;
+
+            Ok(YarnValue::F32(rand::thread_rng().gen_range(1..top) as f32))
         }
         "round" => {
-            todo!()
+            param_count_is(&func_data.parameters, 1)?;
+            let num = extract_f32(&func_data.parameters[0])?;
+
+            Ok(YarnValue::F32(num.round()))
         }
-        "round_places" => {}
-        "floor" => {}
-        "ceil" => {}
-        "inc" => {}
-        "dec" => {}
-        "decimal" => {}
-        "int" => {}
+        "round_places" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let num = extract_f32(&func_data.parameters[0])?;
+            let places = extract_f32(&func_data.parameters[1])?;
+
+            let places_f = 10.0f32.powi(places as i32);
+
+            Ok(YarnValue::F32((num * places_f).round() / places_f))
+        }
+        "floor" => {
+            param_count_is(&func_data.parameters, 1)?;
+            let num = extract_f32(&func_data.parameters[0])?;
+
+            let output = if num.is_sign_negative() {
+                num.ceil()
+            } else {
+                num.floor()
+            };
+
+            Ok(YarnValue::F32(output))
+        }
+        "ceil" => {
+            param_count_is(&func_data.parameters, 1)?;
+            let num = extract_f32(&func_data.parameters[0])?;
+
+            let output = if num.is_sign_negative() {
+                num.floor()
+            } else {
+                num.ceil()
+            };
+
+            Ok(YarnValue::F32(output))
+        }
+        "inc" => {
+            param_count_is(&func_data.parameters, 1)?;
+            let num = extract_f32(&func_data.parameters[0])?;
+
+            let output = if num.fract() < f32::EPSILON {
+                num + 1.0
+            } else if num.is_sign_negative() {
+                num.floor()
+            } else {
+                num.ceil()
+            };
+
+            Ok(YarnValue::F32(output))
+        }
+        "dec" => {
+            param_count_is(&func_data.parameters, 1)?;
+            let num = extract_f32(&func_data.parameters[0])?;
+
+            let output = if num.fract() < f32::EPSILON {
+                num - 1.0
+            } else if num.is_sign_negative() {
+                num.ceil()
+            } else {
+                num.floor()
+            };
+
+            Ok(YarnValue::F32(output))
+        }
+        "decimal" => {
+            param_count_is(&func_data.parameters, 1)?;
+            let num = extract_f32(&func_data.parameters[0])?;
+
+            Ok(YarnValue::F32(num.fract()))
+        }
+        "int" => {
+            param_count_is(&func_data.parameters, 1)?;
+            let num = extract_f32(&func_data.parameters[0])?;
+
+            Ok(YarnValue::F32(num.floor()))
+        }
         _ => unreachable!(),
-    };
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum FuncError {
-    #[error("incorrect parameter count: expected {expected} but found {found}")]
-    ParameterMismatch { expected: usize, found: usize },
+    #[error("unexpected parameter count: expected {expected} but found {found}")]
+    UnexpectedParamCount { expected: usize, found: usize },
+
+    #[error("unexpected parameter type: expected {expected} but found {found}")]
+    UnexpectedParamType {
+        expected: &'static str,
+        found: &'static str,
+    },
 }

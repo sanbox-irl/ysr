@@ -42,8 +42,13 @@ fn main() {
             }
             ExecutionOutput::Command(cmd) => todo!(),
             ExecutionOutput::Function(function) => {
-                
-            },
+                // we can do this because we know that we've implemented the default functions
+                let output = yarn_spinner::handle_default_functions(&function)
+                    .unwrap()
+                    .unwrap();
+
+                yarn_runner.return_function(output).unwrap();
+            }
         }
     }
 
