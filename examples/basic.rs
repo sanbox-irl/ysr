@@ -1,4 +1,4 @@
-use yarn_spinner::{ExecutionOutput, LocalizationHandler, YarnProgram, YarnRunner, YarnStorage};
+use yarn_spinner::{ExecutionOutput, LineHandler, YarnProgram, YarnRunner, YarnStorage};
 
 const PROGRAM_BYTES: &[u8] = include_bytes!("../test_input/test.yarnc");
 const LOCAL_BYTES: &str = include_str!("../test_input/test-Lines.csv");
@@ -7,7 +7,7 @@ fn main() {
     let mut storage = YarnStorage::new();
 
     let mut yarn_runner = YarnRunner::new(YarnProgram::new(PROGRAM_BYTES).unwrap());
-    let localization_handler = LocalizationHandler::new(LOCAL_BYTES); // will need an unwrap here eventually instead of crashing on bad csv
+    let localization_handler = LineHandler::new(LOCAL_BYTES); // will need an unwrap here eventually instead of crashing on bad csv
     yarn_runner.set_node("first_guy").unwrap();
 
     let console = dialoguer::console::Term::stderr();
@@ -15,7 +15,7 @@ fn main() {
     while let Some(output) = yarn_runner.execute(&mut storage).unwrap() {
         match output {
             ExecutionOutput::Line(line) => {
-                let text = localization_handler.localize(&line).unwrap();
+                let text = localization_handler.line(&line).unwrap();
                 println!("{}", text);
 
                 // now wait for the user to hit enter
@@ -27,7 +27,7 @@ fn main() {
                 let mut selection = dialoguer::Select::new();
 
                 for opt in opts {
-                    let v = localization_handler.localize(opt.line()).unwrap();
+                    let v = localization_handler.line(opt.line()).unwrap();
                     let v = match opt.condition_passed() {
                         Some(true) | None => v,
                         Some(false) => {

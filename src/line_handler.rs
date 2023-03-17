@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 #[derive(Debug)]
-pub struct LocalizationHandler(HashMap<String, String>);
+pub struct LineHandler(HashMap<String, String>);
 
-impl LocalizationHandler {
+impl LineHandler {
     /// Creates a new localization handler
     pub fn new(csv_str: &str) -> Self {
         let mut local = HashMap::new();
@@ -27,7 +27,7 @@ impl LocalizationHandler {
     }
 
     /// Finds the right line based on the key
-    pub fn localize(&self, line: &crate::YarnLine) -> Option<String> {
+    pub fn line(&self, line: &crate::YarnLine) -> Option<String> {
         let txt_base = self.0.get(&line.string_key)?;
 
         Some(crate::apply_arguments_in_substition(

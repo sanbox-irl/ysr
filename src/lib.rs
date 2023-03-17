@@ -11,13 +11,13 @@
 
 mod byte_code;
 mod command_handler;
-mod localization_handler;
+mod line_handler;
 mod proto;
 mod storage;
 
 pub use byte_code::{YarnProgram, YarnProgramError};
 pub use command_handler::*;
-pub use localization_handler::LocalizationHandler;
+pub use line_handler::LineHandler;
 pub use storage::YarnStorage;
 
 use byte_code::Instruction;
