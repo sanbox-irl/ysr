@@ -1,26 +1,26 @@
-title: first_guy
+﻿title: first_guy
 position: -103,39
 ---
 <<declare $APPLES to false>>
 <<declare $ROLLED to 0>>
-Narrator: This is a simple line of a dialogue.
-Character: Here are options.
+Narrator: This is a simple line of a dialogue. #line:09d53cf 
+Character: Here are options. #line:029bafb 
     << jump opts >>
 ===
 title: opts
 position: -65,306
 ---
-    -> Great options, but let's stop.
-    -> Give me $APPLES true?
+    -> Great options, but let's stop. #line:037f467 
+    -> Give me $APPLES true? #line:08b2ff7 
         << set $APPLES = true >>
         << set $ROLLED to dice(10)>>
-        The value of our rolled variable is {$ROLLED}.
+        The value of our rolled variable is {$ROLLED}. #line:0307fc5 
         << jump opts >>
-    -> Do you have any other character to show me? I know I need $APPLES to be true for this. <<if $APPLES>>
+    -> Do you have any other character to show me? I know I need $APPLES to be true for this. <<if $APPLES>> #line:0c5ed9a 
         <<jump end_of_line>>
 ===
 title: end_of_line
 position: 280,268
 ---
-Fancy them apples!
+Fancy them apples! #line:061b2e2 
 ===

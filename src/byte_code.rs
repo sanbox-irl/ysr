@@ -169,9 +169,7 @@ impl YarnProgram {
                         Instruction::JumpIfFalse(operands.take_str()?)
                     }
                     instruction::OpCode::Pop => Instruction::Pop,
-                    instruction::OpCode::CallFunc => {
-                        Instruction::CallFunc(operands.take_str()?)
-                    },
+                    instruction::OpCode::CallFunc => Instruction::CallFunc(operands.take_str()?),
                     instruction::OpCode::PushVariable => Instruction::PushVar(operands.take_str()?),
                     instruction::OpCode::StoreVariable => {
                         Instruction::StoreVar(operands.take_str()?)
