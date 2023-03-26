@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Range, iter::Peekable};
 
 #[derive(Debug)]
 pub struct LineHandler(HashMap<String, String>);
@@ -35,4 +35,42 @@ impl LineHandler {
             &line.substitutions,
         ))
     }
+}
+
+pub fn parse_line_markup(input: &str) -> Vec<Markup> {
+    let mut chars = input.chars().enumerate().peekable();
+
+    while let Some((i, chr)) = chars.next() {}
+
+    todo!()
+}
+
+/// Consumes a string
+fn consume_word(iter: &mut Peekable<impl Iterator<Item = (usize, char)>>) -> String {
+    
+}
+
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct Markup {
+    start: usize,
+    end: usize,
+    attributes: Vec<MarkupAttribute>,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct MarkupAttribute {
+    name: String,
+    value: MarkupValue,
+}
+
+/// A markup value. Markup can have distinct integers from floats, so uses a different
+/// enumeration than [crate::YarnValue].
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub enum MarkupValue {
+    I32(i32),
+    F32(f32),
+    String(String),
+    Bool(bool),
 }
