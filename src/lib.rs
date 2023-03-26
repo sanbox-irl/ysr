@@ -14,6 +14,7 @@ mod command_handler;
 mod line_handler;
 mod proto;
 mod storage;
+mod markup;
 
 pub use byte_code::{YarnProgram, YarnProgramError};
 pub use command_handler::*;
