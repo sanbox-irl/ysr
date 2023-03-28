@@ -15,7 +15,7 @@ impl std::str::FromStr for LineMarkup {
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         let mut attributes = vec![];
-        // let mut open = vec![];
+        let mut open = vec![];
         let mut stream = TokenStream(input.chars().enumerate().peekable(), input);
 
         // our working buffer
@@ -110,7 +110,7 @@ impl std::str::FromStr for LineMarkup {
                         }
                     }
 
-                    attributes.push(attribute);
+                    open.push(attribute);
                 }
                 ':' => {
                     clean_text.push(':');
@@ -145,6 +145,11 @@ impl std::str::FromStr for LineMarkup {
             }
         }
 
+        // we report the first as an error -- it's not perfect, but good enough.
+        if let Some(open) = open.first() {
+            return Err(MarkupParseErr::AttributeNotClosed(open.name.clone()));
+        }
+
         Ok(Self {
             clean_text,
             attributes,
@@ -175,8 +180,11 @@ pub enum MarkupValue {
     Bool(bool),
 }
 
-#[derive(Debug, thiserror::Error, Clone, Copy)]
-pub enum MarkupParseErr {}
+#[derive(Debug, thiserror::Error, Clone)]
+pub enum MarkupParseErr {
+    #[error("attribute `{0}` was not closed")]
+    AttributeNotClosed(String),
+}
 
 /// Takes a guess at what it could be
 fn markup_from_str(s: &str) -> MarkupValue {
