@@ -1,144 +1,155 @@
 use std::{
     iter::{Enumerate, Peekable},
-    mem,
     ops::Range,
     str::Chars,
 };
 
-#[allow(dead_code)]
-pub fn parse_line_markup(input: &str) -> Vec<Attribute> {
-    let mut output = vec![];
-    let mut stream = TokenStream(input.chars().enumerate().peekable(), input);
+#[derive(Debug)]
+pub struct LineMarkup {
+    pub clean_text: String,
+    pub attributes: Vec<Attribute>,
+}
 
-    // our working buffer
-    let mut assigned_character = false;
-    let mut buf = String::new();
-    let mut buf_started = 0;
+impl std::str::FromStr for LineMarkup {
+    type Err = MarkupParseErr;
 
-    // let mut cleaned_text = String::with_capacity(input.len());
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        let mut attributes = vec![];
+        // let mut open = vec![];
+        let mut stream = TokenStream(input.chars().enumerate().peekable(), input);
 
-    while let Some((i, chr)) = stream.next() {
-        match chr {
-            '\\' => {
-                // this means we're about to escape somethin...
-                if matches!(stream.peek(), Some((_, '[')) | Some((_, ']'))) {
-                    // eat it up!
-                    buf.push(stream.next().unwrap().1);
-                }
-            }
-            '[' => {
-                let attribute_start = i;
+        // our working buffer
+        let mut assigned_character = false;
+        let mut clean_text = String::new();
 
-                // okay, the beginning of an attribute! Let's do dis.
-                let (attribute_name_range, attribute_name) = stream.consume_ident_with_range();
-
-                // eat up any whitespace
-                stream.eat_whitespace();
-                stream.not_finished().expect("will be err");
-
-                let mut attribute = Attribute {
-                    name: attribute_name,
-                    range: attribute_start..usize::MAX,
-                    properties: vec![],
-                };
-
-                match stream.peek().unwrap() {
-                    // shorthand, time to set an attribute
-                    (_, '=') => {
-                        stream.next();
-                        let value = stream.consume_property_value();
-
-                        // eat up the white space
-                        stream.eat_whitespace();
-
-                        match stream.next() {
-                            // happy
-                            Some((_, ']')) => {}
-                            // unexpected
-                            Some((_, _)) => {
-                                panic!("unexpected end of attribute")
-                            }
-                            None => {
-                                panic!("unexpected end of input");
-                            }
-                        }
-
-                        // get the attribute name again to avoid a clone in the happy path
-                        let attribute_name = stream.get(attribute_name_range).unwrap().to_owned();
-
-                        attribute.properties.push(Property {
-                            name: attribute_name,
-                            value,
-                        });
+        while let Some((_, chr)) = stream.next() {
+            match chr {
+                '\\' => {
+                    // this means we're about to escape somethin...
+                    if matches!(stream.peek(), Some((_, '[')) | Some((_, ']'))) {
+                        // eat it up!
+                        clean_text.push(stream.next().unwrap().1);
                     }
-                    // okay, that's it buds
-                    (_, ']') => {}
+                }
+                '[' => {
+                    // okay, the beginning of an attribute! Let's do dis.
+                    let (attribute_name_range, attribute_name) = stream.consume_ident_with_range();
 
-                    // name for a property
-                    (_, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_') => {
-                        // okay grab all the name property keys we can
-                        loop {
-                            let property_name = stream.consume_ident();
+                    // eat up any whitespace
+                    stream.eat_whitespace();
+                    stream.not_finished().expect("will be err");
 
-                            stream.eat_whitespace();
-                            assert_eq!(stream.next().unwrap().1, '=');
-                            stream.eat_whitespace();
+                    let mut attribute = Attribute {
+                        name: attribute_name,
+                        range: clean_text.len()..usize::MAX,
+                        properties: vec![],
+                    };
 
+                    match stream.peek().unwrap() {
+                        // shorthand, time to set an attribute
+                        (_, '=') => {
+                            stream.next();
                             let value = stream.consume_property_value();
 
+                            // eat up the white space
+                            stream.eat_whitespace();
+
+                            match stream.next() {
+                                // happy
+                                Some((_, ']')) => {}
+                                // unexpected
+                                Some((_, _)) => {
+                                    panic!("unexpected end of attribute")
+                                }
+                                None => {
+                                    panic!("unexpected end of input");
+                                }
+                            }
+
+                            // get the attribute name again to avoid a clone in the happy path
+                            let attribute_name =
+                                stream.get(attribute_name_range).unwrap().to_owned();
+
                             attribute.properties.push(Property {
-                                name: property_name,
+                                name: attribute_name,
                                 value,
                             });
+                        }
+                        // okay, that's it buds
+                        (_, ']') => {
+                            stream.next();
+                        }
 
-                            stream.eat_whitespace();
-                            stream.not_finished().expect("will be an error");
+                        // name for a property
+                        (_, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_') => {
+                            // okay grab all the name property keys we can
+                            loop {
+                                let property_name = stream.consume_ident();
 
-                            if stream.consume_if(|chr| chr == ']') {
-                                break;
+                                stream.eat_whitespace();
+                                assert_eq!(stream.next().unwrap().1, '=');
+                                stream.eat_whitespace();
+
+                                let value = stream.consume_property_value();
+
+                                attribute.properties.push(Property {
+                                    name: property_name,
+                                    value,
+                                });
+
+                                stream.eat_whitespace();
+                                stream.not_finished().expect("will be an error");
+
+                                if stream.consume_if(|chr| chr == ']') {
+                                    break;
+                                }
                             }
                         }
+                        c => {
+                            panic!("probably an invalid name for a property {:?}", c);
+                        }
                     }
-                    c => {
-                        panic!("probably an invalid name for a property {:?}", c);
+
+                    attributes.push(attribute);
+                }
+                ':' => {
+                    clean_text.push(':');
+
+                    if assigned_character {
+                        continue;
+                    } else {
+                        // this is to kill the `:` we just pushed
+                        let value = clean_text[..clean_text.len() - 1].to_owned();
+
+                        let ws_start = stream.peek_index();
+                        stream.eat_whitespace();
+                        let ws_end = stream.peek_index();
+                        clean_text.push_str(stream.get(ws_start..ws_end).unwrap());
+
+                        // and toss it out there!
+                        attributes.push(Attribute {
+                            name: "character".to_string(),
+                            range: 0..clean_text.len(),
+                            properties: vec![Property {
+                                name: "name".to_string(),
+                                value: MarkupValue::String(value),
+                            }],
+                        });
+
+                        assigned_character = true;
                     }
                 }
-
-                output.push(attribute);
-            }
-            ':' => {
-                if assigned_character {
-                    buf.push(':');
-                } else {
-                    assert_eq!(buf_started, 0, "attribute on character? bizarre");
-                    let value = mem::take(&mut buf);
-
-                    // okay we need to eat all the whitespace after it...
-                    stream.eat_whitespace();
-
-                    let end = stream.peek_index();
-
-                    // and toss it out there!
-                    output.push(Attribute {
-                        name: "character".to_string(),
-                        range: 0..end,
-                        properties: vec![Property {
-                            name: "name".to_string(),
-                            value: MarkupValue::String(value),
-                        }],
-                    });
-
-                    assigned_character = true;
-                    buf_started = end;
+                chr => {
+                    clean_text.push(chr);
                 }
-            }
-            chr => {
-                buf.push(chr);
             }
         }
-    }
 
-    output
+        Ok(Self {
+            clean_text,
+            attributes,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -163,6 +174,9 @@ pub enum MarkupValue {
     String(String),
     Bool(bool),
 }
+
+#[derive(Debug, thiserror::Error, Clone, Copy)]
+pub enum MarkupParseErr {}
 
 /// Takes a guess at what it could be
 fn markup_from_str(s: &str) -> MarkupValue {
@@ -211,7 +225,7 @@ impl TokenStream<'_> {
     /// we break.
     ///
     /// This returns `false` only if we ran out of the stream.
-    fn eat_while(&mut self, predicate: impl Fn(char) -> bool) -> bool {
+    fn eat_while(&mut self, mut predicate: impl FnMut(char) -> bool) -> bool {
         loop {
             match self.0.peek() {
                 Some((_, chr)) => {
@@ -308,17 +322,26 @@ mod tests {
 
     #[test]
     fn no_markup() {
-        assert!(parse_line_markup("this has no markup in it").is_empty());
-        assert!(parse_line_markup("    ").is_empty());
-        assert!(parse_line_markup("-----").is_empty());
+        assert!("this has no markup in it"
+            .parse::<LineMarkup>()
+            .unwrap()
+            .attributes
+            .is_empty());
+        assert!("    ".parse::<LineMarkup>().unwrap().attributes.is_empty());
+        assert!("-----".parse::<LineMarkup>().unwrap().attributes.is_empty());
     }
 
     #[test]
     fn character_markup() {
-        let output = parse_line_markup("Narrator: this is a simple line");
-        assert_eq!(output.len(), 1);
+        let output = "Narrator: this is a simple line"
+            .parse::<LineMarkup>()
+            .unwrap();
+        assert_eq!(output.clean_text, "Narrator: this is a simple line");
 
-        let chr = &output[0];
+        let attributes = output.attributes;
+        assert_eq!(attributes.len(), 1);
+
+        let chr = &attributes[0];
         assert_eq!(chr.name, "character");
         assert_eq!(chr.range, 0..10);
         assert_eq!(chr.properties.len(), 1);
@@ -331,10 +354,18 @@ mod tests {
 
     #[test]
     fn character_ws() {
-        let output = parse_line_markup("Narrator:          this is a simple line");
-        assert_eq!(output.len(), 1);
+        let output = "Narrator:          this is a simple line"
+            .parse::<LineMarkup>()
+            .unwrap();
+        assert_eq!(
+            output.clean_text,
+            "Narrator:          this is a simple line"
+        );
 
-        let chr = &output[0];
+        let attributes = output.attributes;
+        assert_eq!(attributes.len(), 1);
+
+        let chr = &attributes[0];
         assert_eq!(chr.name, "character");
         assert_eq!(chr.range, 0..19);
         assert_eq!(chr.properties.len(), 1);
@@ -347,10 +378,14 @@ mod tests {
 
     #[test]
     fn character_no_ws() {
-        let output = parse_line_markup("Narrator:this is a simple line");
-        assert_eq!(output.len(), 1);
+        let output = "Narrator:this is a simple line"
+            .parse::<LineMarkup>()
+            .unwrap();
+        assert_eq!(output.clean_text, "Narrator:this is a simple line");
+        let attributes = output.attributes;
+        assert_eq!(attributes.len(), 1);
 
-        let chr = &output[0];
+        let chr = &attributes[0];
         assert_eq!(chr.name, "character");
         assert_eq!(chr.range, 0..9);
         assert_eq!(chr.properties.len(), 1);
@@ -363,21 +398,36 @@ mod tests {
 
     #[test]
     fn escaped_sequences() {
-        assert!(parse_line_markup(r#"Here's some brackets \[ \]"#).is_empty());
+        assert!(
+            r#"Here's some brackets \[ \]"#.parse::<LineMarkup>().unwrap().attributes.is_empty()
+        );
     }
 
     #[test]
     fn basic_attributes() {
-        let attributes = parse_line_markup("Here's a [wave] guy");
+        let output = "Here's a [wave] guy".parse::<LineMarkup>().unwrap();
+        assert_eq!(output.clean_text, "Here's a  guy");
+
+        let attributes = output.attributes;
         assert_eq!(attributes.len(), 1);
 
         let one = &attributes[0];
         assert_eq!(one.name, "wave");
         assert_eq!(one.range, 9..usize::MAX);
         assert_eq!(one.properties.len(), 0);
+    }
 
-        let attributes =
-            parse_line_markup("Here's a [wave] guy [other_guy] and there goes another guy");
+    #[test]
+    fn basic_two() {
+        let output = "Here's a [wave] guy [other_guy] and there goes another guy"
+            .parse::<LineMarkup>()
+            .unwrap();
+        assert_eq!(
+            output.clean_text,
+            "Here's a  guy  and there goes another guy"
+        );
+
+        let attributes = output.attributes;
         assert_eq!(attributes.len(), 2);
 
         let one = &attributes[0];
@@ -387,13 +437,15 @@ mod tests {
 
         let two = &attributes[1];
         assert_eq!(two.name, "other_guy");
-        assert_eq!(two.range, 20..usize::MAX);
+        assert_eq!(two.range, 14..usize::MAX);
         assert_eq!(two.properties.len(), 0);
     }
 
     #[test]
     fn shorthand_attribute() {
-        let attributes = parse_line_markup("Here's a [wave=3] guy");
+        let output = "Here's a [wave=3] guy".parse::<LineMarkup>().unwrap();
+        assert_eq!(output.clean_text, "Here's a  guy");
+        let attributes = output.attributes;
 
         let one = &attributes[0];
         assert_eq!(one.name, "wave");
@@ -402,8 +454,28 @@ mod tests {
 
         assert_eq!(one.properties[0].name, "wave");
         assert_eq!(one.properties[0].value, MarkupValue::I32(3));
+    }
 
-        let attributes = parse_line_markup("Here's a [wave=yolo] guy");
+    #[test]
+    fn shorthand_attribute_f32() {
+        let output = "Here's a [wave=3.1] guy".parse::<LineMarkup>().unwrap();
+        assert_eq!(output.clean_text, "Here's a  guy");
+        let attributes = output.attributes;
+
+        let one = &attributes[0];
+        assert_eq!(one.name, "wave");
+        assert_eq!(one.range, 9..usize::MAX);
+        assert_eq!(one.properties.len(), 1);
+
+        assert_eq!(one.properties[0].name, "wave");
+        assert_eq!(one.properties[0].value, MarkupValue::F32(3.1));
+    }
+
+    #[test]
+    fn shorthand_attribute_single() {
+        let output = "Here's a [wave=yolo] guy".parse::<LineMarkup>().unwrap();
+        assert_eq!(output.clean_text, "Here's a  guy");
+        let attributes = output.attributes;
 
         let one = &attributes[0];
         assert_eq!(one.name, "wave");
@@ -415,18 +487,15 @@ mod tests {
             one.properties[0].value,
             MarkupValue::String("yolo".to_string())
         );
+    }
 
-        let attributes = parse_line_markup("Here's a [wave=3.1] guy");
-
-        let one = &attributes[0];
-        assert_eq!(one.name, "wave");
-        assert_eq!(one.range, 9..usize::MAX);
-        assert_eq!(one.properties.len(), 1);
-
-        assert_eq!(one.properties[0].name, "wave");
-        assert_eq!(one.properties[0].value, MarkupValue::F32(3.1));
-
-        let attributes = parse_line_markup("Here's a [wave=\"yooloo there\"] guy");
+    #[test]
+    fn shorthand_attribute_quotes() {
+        let output = "Here's a [wave=\"yooloo there\"] guy"
+            .parse::<LineMarkup>()
+            .unwrap();
+        assert_eq!(output.clean_text, "Here's a  guy");
+        let attributes = output.attributes;
 
         let one = &attributes[0];
         assert_eq!(one.name, "wave");
