@@ -1,6 +1,7 @@
 use std::{
     iter::{Enumerate, Peekable},
     mem,
+    ops::Range,
     str::Chars,
 };
 
@@ -14,7 +15,9 @@ pub fn parse_line_markup(input: &str) -> Vec<Markup> {
     let mut buf = String::new();
     let mut buf_started = 0;
 
-    while let Some((_i, chr)) = stream.next() {
+    // let mut cleaned_text = String::with_capacity(input.len());
+
+    while let Some((i, chr)) = stream.next() {
         match chr {
             '\\' => {
                 // this means we're about to escape somethin...
@@ -23,10 +26,50 @@ pub fn parse_line_markup(input: &str) -> Vec<Markup> {
                     buf.push(stream.next().unwrap().1);
                 }
             }
-            // '[' => {
-            //     // okay, the beginning of an attribute! Let's do dis.
-            //     let name =
-            // }
+            '[' => {
+                // okay, the beginning of an attribute! Let's do dis.
+                let start = i;
+                stream.eat_while(|chr| chr.is_ascii_alphanumeric());
+                let end = stream.peek_index();
+
+                let attribute_name = stream.get(start..end).unwrap();
+
+                // eat up any whitespace
+                stream.eat_whitespace();
+
+                match stream.peek() {
+                    // shorthand, time to set an attribute
+                    Some((start, '=')) => {
+                        let start = *start;
+                        stream.next();
+
+                        let quote_start = stream.consume_if(|chr| chr == '"');
+                        if quote_start {
+                            // eat until the end quote
+                            let success = stream.eat_while(|chr| chr != '"');
+                            if !success {
+                                panic!("we didn't get an end quotation");
+                            }
+                            stream.next();
+                            stream.eat_whitespace();
+                        }
+
+                        stream.eat_while(|chr| chr != ']');
+                    }
+                    // okay, that's it buds
+                    Some((_, ']')) => {}
+                    // name for an attribute
+                    Some((_, 'a'..='z' | 'A'..='Z')) => {}
+                    Some(_) => {
+                        panic!("probably an invalid name for a property");
+                    }
+                    None => {
+                        panic!("unexpected end of text");
+                    }
+                }
+
+                // if stream.peek().map_or(false, |v| v.1 == )
+            }
             ':' => {
                 if assigned_character {
                     buf.push(':');
@@ -91,7 +134,7 @@ pub enum MarkupValue {
 struct TokenStream<'a>(Peekable<Enumerate<Chars<'a>>>, &'a str);
 
 impl TokenStream<'_> {
-    /// Peeks, and if at end of stream, returns len
+    /// Peeks, and if at end of stream, returns `len`
     pub fn peek_index(&mut self) -> usize {
         self.0.peek().map(|v| v.0).unwrap_or_else(|| self.1.len())
     }
@@ -108,17 +151,44 @@ impl TokenStream<'_> {
 
     /// Eats all whitespace, throwing it away
     pub fn eat_whitespace(&mut self) {
-        while let Some((_, chr)) = self.0.peek() {
-            if chr.is_whitespace() {
-                self.0.next();
-            } else {
-                break;
+        self.eat_while(|chr| chr.is_whitespace());
+    }
+
+    /// advances the stream forward as long as the condition is true. When the next char wouldn't satisfy the predicate,
+    /// we break.
+    ///
+    /// This returns `false` only if we ran out of the stream.
+    pub fn eat_while(&mut self, predicate: impl Fn(char) -> bool) -> bool {
+        loop {
+            match self.0.peek() {
+                Some((_, chr)) => {
+                    if !predicate(*chr) {
+                        break true;
+                    } else {
+                        self.0.next();
+                    }
+                }
+                None => {
+                    break false;
+                }
             }
         }
     }
 
-    pub fn get_word(&mut self, buf: &mut ) {
+    /// If on peek, the next token matches this, consume it. Returns true if we did it.
+    pub fn consume_if(&mut self, predicate: impl Fn(char) -> bool) -> bool {
+        let Some((_, chr)) = self.peek() else { return false; };
 
+        if predicate(*chr) {
+            self.next();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn get(&self, idx: Range<usize>) -> Option<&str> {
+        self.1.get(idx)
     }
 }
 
