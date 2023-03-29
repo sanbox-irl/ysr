@@ -34,28 +34,43 @@ impl std::str::FromStr for LineMarkup {
                 '[' => {
                     let is_closing = stream.consume_if(|chr| chr == '/');
 
+                    // that's the close all fella
+                    if is_closing && stream.consume_if(|chr| chr == ']') {
+                        for mut attribute in open.drain(..) {
+                            attribute.range.end = clean_text.len();
+
+                            attributes.push(attribute);
+                        }
+
+                        continue;
+                    }
+
                     // okay, the beginning of an attribute! Let's do dis.
-                    let (attribute_name_range, attribute_name) = stream.consume_ident_with_range();
+                    let (attribute_name_range, attribute_name) =
+                        stream.consume_ident_with_range()?;
 
                     // eat up any whitespace
                     stream.eat_whitespace();
-                    stream.not_finished().expect("will be err");
+                    stream.not_finished()?;
 
                     if is_closing {
                         assert_eq!(stream.next().unwrap().1, ']');
 
-                        let pos = open
-                            .iter()
-                            .rev()
-                            .position(|att| att.name == attribute_name)
-                            .expect("will be an error too");
+                        match open.iter().rev().position(|att| att.name == attribute_name) {
+                            Some(pos) => {
+                                let mut attribute = open.remove(pos);
+                                attribute.range.end = clean_text.len();
 
-                        let mut attribute = open.remove(pos);
-                        attribute.range.end = clean_text.len();
+                                attributes.push(attribute);
 
-                        attributes.push(attribute);
-
-                        continue;
+                                continue;
+                            }
+                            None => {
+                                return Err(MarkupParseErr::UnexpectedAttributeClose(
+                                    attribute_name,
+                                ));
+                            }
+                        }
                     }
 
                     let mut attribute = Attribute {
@@ -103,7 +118,7 @@ impl std::str::FromStr for LineMarkup {
                         (_, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_') => {
                             // okay grab all the name property keys we can
                             loop {
-                                let property_name = stream.consume_ident();
+                                let property_name = stream.consume_ident()?;
 
                                 stream.eat_whitespace();
                                 assert_eq!(stream.next().unwrap().1, '=');
@@ -117,7 +132,7 @@ impl std::str::FromStr for LineMarkup {
                                 });
 
                                 stream.eat_whitespace();
-                                stream.not_finished().expect("will be an error");
+                                stream.not_finished()?;
 
                                 if stream.consume_if(|chr| chr == ']') {
                                     break;
@@ -206,6 +221,9 @@ pub enum MarkupParseErr {
 
     #[error("attribute `[/{0}]` was not open, so close was unexpected")]
     UnexpectedAttributeClose(String),
+
+    #[error("markup ended unexpectedly")]
+    UnexpectedEnd,
 }
 
 /// Takes a guess at what it could be
@@ -284,10 +302,10 @@ impl TokenStream<'_> {
         }
     }
 
-    fn not_finished(&mut self) -> Result<(), ()> {
+    fn not_finished(&mut self) -> Result<(), MarkupParseErr> {
         match self.peek() {
             Some(_) => Ok(()),
-            None => Err(()),
+            None => Err(MarkupParseErr::UnexpectedEnd),
         }
     }
 
@@ -327,9 +345,9 @@ impl TokenStream<'_> {
         }
     }
 
-    fn consume_ident_with_range(&mut self) -> (Range<usize>, String) {
+    fn consume_ident_with_range(&mut self) -> Result<(Range<usize>, String), MarkupParseErr> {
         self.eat_whitespace();
-        self.not_finished().expect("convert to err");
+        self.not_finished()?;
 
         let name_start = self.peek_index();
         self.eat_while(|chr| chr.is_ascii_alphanumeric() || chr == '_');
@@ -338,11 +356,11 @@ impl TokenStream<'_> {
         let attribute_name_range = name_start..end;
         let attribute_name = self.get(attribute_name_range.clone()).unwrap().to_owned();
 
-        (attribute_name_range, attribute_name)
+        Ok((attribute_name_range, attribute_name))
     }
 
-    fn consume_ident(&mut self) -> String {
-        self.consume_ident_with_range().1
+    fn consume_ident(&mut self) -> Result<String, MarkupParseErr> {
+        self.consume_ident_with_range().map(|v| v.1)
     }
 }
 
@@ -474,7 +492,9 @@ mod tests {
 
     #[test]
     fn shorthand_attribute() {
-        let output = "Here's a [wave=3] guy[/wave]".parse::<LineMarkup>().unwrap();
+        let output = "Here's a [wave=3] guy[/wave]"
+            .parse::<LineMarkup>()
+            .unwrap();
         assert_eq!(output.clean_text, "Here's a  guy");
         let attributes = output.attributes;
 
@@ -542,5 +562,17 @@ mod tests {
             one.properties[0].value,
             MarkupValue::String("yooloo there".to_string())
         );
+    }
+
+    #[test]
+    fn close_all() {
+        let output = "Here's a [wave=\"yooloo there\"][okay=3][another_one]guy[/]"
+            .parse::<LineMarkup>()
+            .unwrap();
+        assert_eq!(output.clean_text, "Here's a guy");
+        assert_eq!(output.attributes.len(), 3);
+        for attribute in output.attributes {
+            assert_eq!(attribute.range.end, output.clean_text.len());
+        }
     }
 }
