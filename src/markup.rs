@@ -175,7 +175,38 @@ impl std::str::FromStr for LineMarkup {
                             stream.eat_whitespace();
                         }
                     } else {
-                        open.push(attribute);
+                        // check if it's a nomarkup attribute
+                        if attribute.name == "nomarkup" {
+                            // okay time to CHUNK
+                            let mut found_end = false;
+
+                            while let Some((_, chr)) = stream.next() {
+                                clean_text.push(chr);
+
+                                // lazily just keep bopping, with a reverse iteration.
+                                // this isn't very fast, but it is what it is.
+                                // TODO: this won't work with `[  /nomarkup]` and other whitespace
+                                // nonsense, but this is fine for now.
+                                if clean_text.ends_with("[/nomarkup]") {
+                                    found_end = true;
+
+                                    // get it out of there!
+                                    for _ in 0.."[/nomarkup]".len() {
+                                        clean_text.pop();
+                                    }
+                                    break;
+                                }
+                            }
+
+                            if found_end {
+                                attribute.range.end = clean_text.len();
+                                attributes.push(attribute);
+                            } else {
+                                return Err(MarkupParseErr::AttributeNotClosed(attribute.name));
+                            }
+                        } else {
+                            open.push(attribute);
+                        }
                     }
                 }
                 ':' => {
@@ -401,7 +432,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn no_markup() {
+    fn passthrough() {
         assert!("this has no markup in it"
             .parse::<LineMarkup>()
             .unwrap()
@@ -684,5 +715,19 @@ mod tests {
             output.attributes[0].properties[0].value,
             MarkupValue::String("0.9".to_string())
         );
+    }
+
+    #[test]
+    fn no_markup() {
+        let output = "Here's a [nomarkup][screen_shake=\"0.9\"/] guy.[/nomarkup]"
+            .parse::<LineMarkup>()
+            .unwrap();
+        assert_eq!(output.clean_text, "Here's a [screen_shake=\"0.9\"/] guy.");
+        assert_eq!(output.attributes.len(), 1);
+
+        // second screen shake thing
+        assert_eq!(output.attributes[0].range.start, 9);
+        assert_eq!(output.attributes[0].range.end, output.clean_text.len());
+        assert_eq!(output.attributes[0].name, "nomarkup");
     }
 }
