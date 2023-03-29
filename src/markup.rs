@@ -79,6 +79,9 @@ impl std::str::FromStr for LineMarkup {
                         properties: vec![],
                     };
 
+                    // check if it's self closing...
+                    let mut self_closing = stream.consume_if(|chr| chr == '/');
+
                     match stream.peek().unwrap() {
                         // shorthand, time to set an attribute
                         (_, '=') => {
@@ -87,6 +90,11 @@ impl std::str::FromStr for LineMarkup {
 
                             // eat up the white space
                             stream.eat_whitespace();
+
+                            // check for self closing marker
+                            if stream.consume_if(|chr| chr == '/') {
+                                self_closing = true;
+                            }
 
                             match stream.next() {
                                 // happy
@@ -134,6 +142,11 @@ impl std::str::FromStr for LineMarkup {
                                 stream.eat_whitespace();
                                 stream.not_finished()?;
 
+                                // check for self closing marker
+                                if stream.consume_if(|chr| chr == '/') {
+                                    self_closing = true;
+                                }
+
                                 if stream.consume_if(|chr| chr == ']') {
                                     break;
                                 }
@@ -144,7 +157,26 @@ impl std::str::FromStr for LineMarkup {
                         }
                     }
 
-                    open.push(attribute);
+                    if self_closing {
+                        attribute.range.end = attribute.range.start;
+
+                        let trim_whitespace = if let Some(trim_whitespace_property) = attribute
+                            .properties
+                            .iter()
+                            .find(|v| v.name == "trimwhitespace")
+                        {
+                            matches!(trim_whitespace_property.value, MarkupValue::Bool(true))
+                        } else {
+                            true
+                        };
+                        attributes.push(attribute);
+
+                        if trim_whitespace {
+                            stream.eat_whitespace();
+                        }
+                    } else {
+                        open.push(attribute);
+                    }
                 }
                 ':' => {
                     clean_text.push(':');
@@ -326,7 +358,7 @@ impl TokenStream<'_> {
             self.next();
         } else {
             // eat the rest of the word under whitespace or a `]`.
-            self.eat_while(|chr| !chr.is_whitespace() && chr != ']');
+            self.eat_while(|chr| !chr.is_whitespace() && chr != ']' && chr != '/');
         }
 
         let end = self.peek_index();
@@ -574,5 +606,83 @@ mod tests {
         for attribute in output.attributes {
             assert_eq!(attribute.range.end, output.clean_text.len());
         }
+    }
+
+    #[test]
+    fn self_closing() {
+        let output = "Here's a [screen_shake/] guy."
+            .parse::<LineMarkup>()
+            .unwrap();
+        assert_eq!(output.clean_text, "Here's a guy.");
+        assert_eq!(output.attributes.len(), 1);
+
+        assert_eq!(output.attributes[0].range.len(), 0);
+        assert_eq!(output.attributes[0].range.start, 9);
+        assert_eq!(output.attributes[0].range.end, 9);
+        assert_eq!(output.attributes[0].name, "screen_shake");
+        assert_eq!(output.attributes[0].properties.len(), 0);
+    }
+
+    #[test]
+    fn self_closing_prop() {
+        let output = "Here's a [screen_shake value=0.9/] guy."
+            .parse::<LineMarkup>()
+            .unwrap();
+        assert_eq!(output.clean_text, "Here's a guy.");
+        assert_eq!(output.attributes.len(), 1);
+
+        // second screen shake thing
+        assert_eq!(output.attributes[0].range.len(), 0);
+        assert_eq!(output.attributes[0].range.start, 9);
+        assert_eq!(output.attributes[0].range.end, 9);
+        assert_eq!(output.attributes[0].name, "screen_shake");
+        assert_eq!(output.attributes[0].properties.len(), 1);
+        assert_eq!(output.attributes[0].properties[0].name, "value");
+        assert_eq!(
+            output.attributes[0].properties[0].value,
+            MarkupValue::F32(0.9)
+        );
+    }
+
+    #[test]
+    fn self_closing_prop_quote() {
+        let output = "Here's a [screen_shake value=\"0.9\"/] guy."
+            .parse::<LineMarkup>()
+            .unwrap();
+        assert_eq!(output.clean_text, "Here's a guy.");
+        assert_eq!(output.attributes.len(), 1);
+
+        // second screen shake thing
+        assert_eq!(output.attributes[0].range.len(), 0);
+        assert_eq!(output.attributes[0].range.start, 9);
+        assert_eq!(output.attributes[0].range.end, 9);
+        assert_eq!(output.attributes[0].name, "screen_shake");
+        assert_eq!(output.attributes[0].properties.len(), 1);
+        assert_eq!(output.attributes[0].properties[0].name, "value");
+        assert_eq!(
+            output.attributes[0].properties[0].value,
+            MarkupValue::String("0.9".to_string())
+        );
+    }
+
+    #[test]
+    fn self_shorthand_closing_prop_quote() {
+        let output = "Here's a [screen_shake=\"0.9\"/] guy."
+            .parse::<LineMarkup>()
+            .unwrap();
+        assert_eq!(output.clean_text, "Here's a guy.");
+        assert_eq!(output.attributes.len(), 1);
+
+        // second screen shake thing
+        assert_eq!(output.attributes[0].range.len(), 0);
+        assert_eq!(output.attributes[0].range.start, 9);
+        assert_eq!(output.attributes[0].range.end, 9);
+        assert_eq!(output.attributes[0].name, "screen_shake");
+        assert_eq!(output.attributes[0].properties.len(), 1);
+        assert_eq!(output.attributes[0].properties[0].name, "screen_shake");
+        assert_eq!(
+            output.attributes[0].properties[0].value,
+            MarkupValue::String("0.9".to_string())
+        );
     }
 }
