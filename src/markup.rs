@@ -15,7 +15,7 @@ impl std::str::FromStr for LineMarkup {
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         let mut attributes = vec![];
-        let mut open = vec![];
+        let mut open: Vec<Attribute> = vec![];
         let mut stream = TokenStream(input.chars().enumerate().peekable(), input);
 
         // our working buffer
@@ -32,12 +32,31 @@ impl std::str::FromStr for LineMarkup {
                     }
                 }
                 '[' => {
+                    let is_closing = stream.consume_if(|chr| chr == '/');
+
                     // okay, the beginning of an attribute! Let's do dis.
                     let (attribute_name_range, attribute_name) = stream.consume_ident_with_range();
 
                     // eat up any whitespace
                     stream.eat_whitespace();
                     stream.not_finished().expect("will be err");
+
+                    if is_closing {
+                        assert_eq!(stream.next().unwrap().1, ']');
+
+                        let pos = open
+                            .iter()
+                            .rev()
+                            .position(|att| att.name == attribute_name)
+                            .expect("will be an error too");
+
+                        let mut attribute = open.remove(pos);
+                        attribute.range.end = clean_text.len();
+
+                        attributes.push(attribute);
+
+                        continue;
+                    }
 
                     let mut attribute = Attribute {
                         name: attribute_name,
@@ -184,6 +203,9 @@ pub enum MarkupValue {
 pub enum MarkupParseErr {
     #[error("attribute `{0}` was not closed")]
     AttributeNotClosed(String),
+
+    #[error("attribute `[/{0}]` was not open, so close was unexpected")]
+    UnexpectedAttributeClose(String),
 }
 
 /// Takes a guess at what it could be
@@ -413,23 +435,24 @@ mod tests {
 
     #[test]
     fn basic_attributes() {
-        let output = "Here's a [wave] guy".parse::<LineMarkup>().unwrap();
-        assert_eq!(output.clean_text, "Here's a  guy");
+        let output = "Here's a [wave]guy[/wave]".parse::<LineMarkup>().unwrap();
+        assert_eq!(output.clean_text, "Here's a guy");
 
         let attributes = output.attributes;
         assert_eq!(attributes.len(), 1);
 
         let one = &attributes[0];
         assert_eq!(one.name, "wave");
-        assert_eq!(one.range, 9..usize::MAX);
+        assert_eq!(one.range, 9..output.clean_text.len());
         assert_eq!(one.properties.len(), 0);
     }
 
     #[test]
     fn basic_two() {
-        let output = "Here's a [wave] guy [other_guy] and there goes another guy"
-            .parse::<LineMarkup>()
-            .unwrap();
+        let output =
+            "Here's a [wave] guy[/wave] [other_guy] and there goes another guy[/other_guy]"
+                .parse::<LineMarkup>()
+                .unwrap();
         assert_eq!(
             output.clean_text,
             "Here's a  guy  and there goes another guy"
@@ -440,24 +463,24 @@ mod tests {
 
         let one = &attributes[0];
         assert_eq!(one.name, "wave");
-        assert_eq!(one.range, 9..usize::MAX);
+        assert_eq!(one.range, 9..13);
         assert_eq!(one.properties.len(), 0);
 
         let two = &attributes[1];
         assert_eq!(two.name, "other_guy");
-        assert_eq!(two.range, 14..usize::MAX);
+        assert_eq!(two.range, 14..41);
         assert_eq!(two.properties.len(), 0);
     }
 
     #[test]
     fn shorthand_attribute() {
-        let output = "Here's a [wave=3] guy".parse::<LineMarkup>().unwrap();
+        let output = "Here's a [wave=3] guy[/wave]".parse::<LineMarkup>().unwrap();
         assert_eq!(output.clean_text, "Here's a  guy");
         let attributes = output.attributes;
 
         let one = &attributes[0];
         assert_eq!(one.name, "wave");
-        assert_eq!(one.range, 9..usize::MAX);
+        assert_eq!(one.range, 9..output.clean_text.len());
         assert_eq!(one.properties.len(), 1);
 
         assert_eq!(one.properties[0].name, "wave");
@@ -466,13 +489,15 @@ mod tests {
 
     #[test]
     fn shorthand_attribute_f32() {
-        let output = "Here's a [wave=3.1] guy".parse::<LineMarkup>().unwrap();
+        let output = "Here's a [wave=3.1] guy[/wave]"
+            .parse::<LineMarkup>()
+            .unwrap();
         assert_eq!(output.clean_text, "Here's a  guy");
         let attributes = output.attributes;
 
         let one = &attributes[0];
         assert_eq!(one.name, "wave");
-        assert_eq!(one.range, 9..usize::MAX);
+        assert_eq!(one.range, 9..output.clean_text.len());
         assert_eq!(one.properties.len(), 1);
 
         assert_eq!(one.properties[0].name, "wave");
@@ -481,13 +506,15 @@ mod tests {
 
     #[test]
     fn shorthand_attribute_single() {
-        let output = "Here's a [wave=yolo] guy".parse::<LineMarkup>().unwrap();
+        let output = "Here's a [wave=yolo] guy[/wave]"
+            .parse::<LineMarkup>()
+            .unwrap();
         assert_eq!(output.clean_text, "Here's a  guy");
         let attributes = output.attributes;
 
         let one = &attributes[0];
         assert_eq!(one.name, "wave");
-        assert_eq!(one.range, 9..usize::MAX);
+        assert_eq!(one.range, 9..output.clean_text.len());
         assert_eq!(one.properties.len(), 1);
 
         assert_eq!(one.properties[0].name, "wave");
@@ -499,7 +526,7 @@ mod tests {
 
     #[test]
     fn shorthand_attribute_quotes() {
-        let output = "Here's a [wave=\"yooloo there\"] guy"
+        let output = "Here's a [wave=\"yooloo there\"] guy[/wave]"
             .parse::<LineMarkup>()
             .unwrap();
         assert_eq!(output.clean_text, "Here's a  guy");
@@ -507,7 +534,7 @@ mod tests {
 
         let one = &attributes[0];
         assert_eq!(one.name, "wave");
-        assert_eq!(one.range, 9..usize::MAX);
+        assert_eq!(one.range, 9..output.clean_text.len());
         assert_eq!(one.properties.len(), 1);
 
         assert_eq!(one.properties[0].name, "wave");
