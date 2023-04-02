@@ -58,6 +58,9 @@ impl std::str::FromStr for LineMarkup {
 
                         match open.iter().rev().position(|att| att.name == attribute_name) {
                             Some(pos) => {
+                                // we have to do this because we've reversed
+                                let pos = (open.len() - 1) - pos;
+
                                 let mut attribute = open.remove(pos);
                                 attribute.range.end = clean_text.len();
 
@@ -729,5 +732,134 @@ mod tests {
         assert_eq!(output.attributes[0].range.start, 9);
         assert_eq!(output.attributes[0].range.end, output.clean_text.len());
         assert_eq!(output.attributes[0].name, "nomarkup");
+    }
+
+    /// ----- The following tests are based on the Yarn Spinner repo.
+    #[test]
+    fn markup_parsing() {
+        let line_markup = "A [b]B[/b]".parse::<LineMarkup>().unwrap();
+        assert_eq!(line_markup.clean_text, "A B");
+        assert_eq!(line_markup.attributes.len(), 1);
+        assert_eq!(line_markup.attributes[0].name, "b");
+        assert_eq!(line_markup.attributes[0].range, 2..3);
+    }
+
+    #[test]
+    fn overlapping_attributes() {
+        let line_markup = "[a][b][c]X[/b][/a]X[/c]".parse::<LineMarkup>().unwrap();
+        assert_eq!(line_markup.clean_text, "XX");
+        assert_eq!(line_markup.attributes.len(), 3);
+
+        // we don't promise order of the attributes
+        assert!(line_markup.attributes.iter().any(|v| v.name == "a"));
+        assert!(line_markup.attributes.iter().any(|v| v.name == "b"));
+        assert!(line_markup.attributes.iter().any(|v| v.name == "c"));
+    }
+
+    #[test]
+    fn text_extraction() {
+        let line_markup = "A [b]B [c]C[/c][/b]".parse::<LineMarkup>().unwrap();
+        assert_eq!(line_markup.clean_text, "A B C");
+        assert_eq!(line_markup.attributes.len(), 2);
+
+        let b = line_markup
+            .attributes
+            .iter()
+            .find(|v| v.name == "b")
+            .unwrap();
+        assert_eq!(&line_markup.clean_text[b.range.clone()], "B C");
+
+        let c = line_markup
+            .attributes
+            .iter()
+            .find(|v| v.name == "c")
+            .unwrap();
+        assert_eq!(&line_markup.clean_text[c.range.clone()], "C");
+    }
+
+    /*
+    snip -- in yarn spinner in C#, attribute removal is tested here.
+    we don't support attribute remove ourselves -- instead, users can do that.
+     */
+
+    #[test]
+    fn finding_attributes() {
+        let line_markup = "A [b]B[/b] [b]C[/b]".parse::<LineMarkup>().unwrap();
+        assert_eq!(line_markup.clean_text, "A B C");
+        let attribute = line_markup
+            .attributes
+            .iter()
+            .find(|v| v.name == "b")
+            .unwrap();
+
+        assert_eq!(*attribute, line_markup.attributes[0]);
+        assert_ne!(*attribute, line_markup.attributes[1]);
+
+        assert!(!line_markup.attributes.iter().any(|v| v.name == "c"));
+    }
+
+    #[test]
+    fn multibyte_character_parsing() {
+        //     [Theory]
+        //     [InlineData("á [á]S[/á]")]
+        //     [InlineData("á [a]á[/a]")]
+        //     [InlineData("á [a]S[/a]")]
+        //     [InlineData("S [á]S[/á]")]
+        //     [InlineData("S [a]á[/a]")]
+        //     [InlineData("S [a]S[/a]")]
+        //     public void TestMultibyteCharacterParsing(string input) {
+        //         var markup = dialogue.ParseMarkup(input);
+
+        //         // All versions of this string should have the same position
+        //         // and length of the attribute, despite the presence of
+        //         // multibyte characters
+        //         markup.Attributes.Should().ContainSingle();
+        //         markup.Attributes[0].Position.Should().Be(2);
+        //         markup.Attributes[0].Length.Should().Be(1);
+        //     }
+    }
+
+    #[test]
+    fn unexpected_close_marker_throws() {
+        //     [Theory]
+        //     [InlineData("[a][/a][/b]")]
+        //     [InlineData("[/b]")]
+        //     [InlineData("[a][/][/b]")]
+        //     public void TestUnexpectedCloseMarkerThrows(string input) {
+        //         var parsingInvalidMarkup = new Action(() =>
+        //         {
+        //             var markup = dialogue.ParseMarkup(input);
+        //         });
+
+        //         parsingInvalidMarkup.Should().Throw<MarkupParseException>();
+        //     }
+    }
+
+    #[test]
+    fn markup_shortcut_property_parsing() {
+        //         var line = "[a=1]s[/a]";
+        //         var markup = dialogue.ParseMarkup(line);
+
+        //         // Should have a single attribute, "a", at position 0 and
+        //         // length 1
+        //         var attribute = markup.Attributes[0];
+        //         attribute.Name.Should().Be("a");
+        //         attribute.Position.Should().Be(0);
+        //         attribute.Length.Should().Be(1);
+
+        //         // Should have a single property on this attribute, "a". Value
+        //         // should be an integer, 1
+        //         var value = attribute.Properties["a"];
+
+        //         value.Type.Should().Be(MarkupValueType.Integer);
+        //         value.IntegerValue.Should().Be(1);
+    }
+
+    #[test]
+    fn markup_multiple_property() {
+        //         var line = "[a p1=1 p2=2]s[/a]";
+        //         var markup = dialogue.ParseMarkup(line);
+
+        //         markup.Attributes[0].Name.Should().Be("a");
     }
 }
