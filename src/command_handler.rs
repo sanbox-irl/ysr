@@ -28,6 +28,18 @@ pub fn is_default_function(func_name: &str) -> bool {
             | "dec"
             | "decimal"
             | "int"
+            | "Number.EqualTo"
+            | "Number.NotEqualTo"
+            | "String.EqualTo"
+            | "String.NotEqualTo"
+            | "Boolean.EqualTo"
+            | "Boolean.NotEqualTo"
+            | "Number.GreaterThan"
+            | "Number.LessThan"
+            | "Number.Add"
+            | "Number.Subtract"
+            | "Number.Multiply"
+            | "Number.Divide"
     )
 }
 
@@ -55,6 +67,34 @@ fn handle_known_default_function(func_data: &FuncData) -> Result<YarnValue, Func
                 found: crate::type_names::STR,
             }),
             YarnValue::F32(v) => Ok(*v),
+        }
+    }
+
+    fn extract_str(param: &YarnValue) -> Result<&str, FuncError> {
+        match param {
+            YarnValue::Bool(_) => Err(FuncError::UnexpectedParamType {
+                expected: crate::type_names::STR,
+                found: crate::type_names::BOOL,
+            }),
+            YarnValue::Str(v) => Ok(v),
+            YarnValue::F32(_) => Err(FuncError::UnexpectedParamType {
+                expected: crate::type_names::STR,
+                found: crate::type_names::F32,
+            }),
+        }
+    }
+
+    fn extract_bool(param: &YarnValue) -> Result<bool, FuncError> {
+        match param {
+            YarnValue::Bool(v) => Ok(*v),
+            YarnValue::Str(_) => Err(FuncError::UnexpectedParamType {
+                expected: crate::type_names::BOOL,
+                found: crate::type_names::STR,
+            }),
+            YarnValue::F32(_) => Err(FuncError::UnexpectedParamType {
+                expected: crate::type_names::BOOL,
+                found: crate::type_names::F32,
+            }),
         }
     }
 
@@ -163,6 +203,90 @@ fn handle_known_default_function(func_data: &FuncData) -> Result<YarnValue, Func
 
             Ok(YarnValue::F32(num.floor()))
         }
+        "Number.EqualTo" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_f32(&func_data.parameters[0])?;
+            let b = extract_f32(&func_data.parameters[1])?;
+
+            Ok(YarnValue::Bool(a == b))
+        },
+        "Number.NotEqualTo" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_f32(&func_data.parameters[0])?;
+            let b = extract_f32(&func_data.parameters[1])?;
+
+            Ok(YarnValue::Bool(a != b))
+        },
+        "String.EqualTo" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_str(&func_data.parameters[0])?;
+            let b = extract_str(&func_data.parameters[1])?;
+
+            Ok(YarnValue::Bool(a == b))
+        },
+        "String.NotEqualTo" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_str(&func_data.parameters[0])?;
+            let b = extract_str(&func_data.parameters[1])?;
+
+            Ok(YarnValue::Bool(a != b))
+        },
+        "Boolean.EqualTo" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_bool(&func_data.parameters[0])?;
+            let b = extract_bool(&func_data.parameters[1])?;
+
+            Ok(YarnValue::Bool(a == b))
+        },
+        "Boolean.NotEqualTo" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_bool(&func_data.parameters[0])?;
+            let b = extract_bool(&func_data.parameters[1])?;
+
+            Ok(YarnValue::Bool(a != b))
+        },
+        "Number.GreaterThan" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_f32(&func_data.parameters[0])?;
+            let b = extract_f32(&func_data.parameters[1])?;
+
+            Ok(YarnValue::Bool(a > b))
+        },
+        "Number.LessThan" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_f32(&func_data.parameters[0])?;
+            let b = extract_f32(&func_data.parameters[1])?;
+
+            Ok(YarnValue::Bool(a < b))
+        },
+        "Number.Add" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_f32(&func_data.parameters[0])?;
+            let b = extract_f32(&func_data.parameters[1])?;
+
+            Ok(YarnValue::F32(a + b))
+        },
+        "Number.Subtract" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_f32(&func_data.parameters[0])?;
+            let b = extract_f32(&func_data.parameters[1])?;
+
+            Ok(YarnValue::F32(a - b))
+        },
+        "Number.Multiply" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_f32(&func_data.parameters[0])?;
+            let b = extract_f32(&func_data.parameters[1])?;
+
+            Ok(YarnValue::F32(a * b))
+        },
+        "Number.Divide" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_f32(&func_data.parameters[0])?;
+            let b = extract_f32(&func_data.parameters[1])?;
+
+            Ok(YarnValue::F32(a / b))
+        },
         _ => unreachable!(),
     }
 }
