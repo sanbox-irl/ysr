@@ -1,8 +1,4 @@
-use std::{
-    iter::{Enumerate, Peekable},
-    ops::Range,
-    str::Chars,
-};
+use std::{iter::Peekable, ops::Range, str::CharIndices};
 
 #[derive(Debug)]
 pub struct LineMarkup {
@@ -16,7 +12,7 @@ impl std::str::FromStr for LineMarkup {
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         let mut attributes = vec![];
         let mut open: Vec<Attribute> = vec![];
-        let mut stream = TokenStream(input.chars().enumerate().peekable(), input);
+        let mut stream = TokenStream(input.char_indices().peekable(), input);
 
         // our working buffer
         let mut assigned_character = false;
@@ -37,7 +33,7 @@ impl std::str::FromStr for LineMarkup {
                     // that's the close all fella
                     if is_closing && stream.consume_if(|chr| chr == ']') {
                         for mut attribute in open.drain(..) {
-                            attribute.range.end = clean_text.len();
+                            attribute.range.end = clean_text.chars().count();
 
                             attributes.push(attribute);
                         }
@@ -58,8 +54,11 @@ impl std::str::FromStr for LineMarkup {
 
                         match open.iter().rev().position(|att| att.name == attribute_name) {
                             Some(pos) => {
+                                // we have to do this because we've reversed
+                                let pos = (open.len() - 1) - pos;
+
                                 let mut attribute = open.remove(pos);
-                                attribute.range.end = clean_text.len();
+                                attribute.range.end = clean_text.chars().count();
 
                                 attributes.push(attribute);
 
@@ -75,7 +74,7 @@ impl std::str::FromStr for LineMarkup {
 
                     let mut attribute = Attribute {
                         name: attribute_name,
-                        range: clean_text.len()..usize::MAX,
+                        range: clean_text.chars().count()..usize::MAX,
                         properties: vec![],
                     };
 
@@ -122,8 +121,9 @@ impl std::str::FromStr for LineMarkup {
                             stream.next();
                         }
 
-                        // name for a property
-                        (_, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_') => {
+                        // name for a property -- we don't really care what kind of character it is
+                        // because of utf8 localization reasons
+                        _ => {
                             // okay grab all the name property keys we can
                             loop {
                                 let property_name = stream.consume_ident()?;
@@ -151,9 +151,6 @@ impl std::str::FromStr for LineMarkup {
                                     break;
                                 }
                             }
-                        }
-                        c => {
-                            panic!("probably an invalid name for a property {:?}", c);
                         }
                     }
 
@@ -199,7 +196,7 @@ impl std::str::FromStr for LineMarkup {
                             }
 
                             if found_end {
-                                attribute.range.end = clean_text.len();
+                                attribute.range.end = clean_text.chars().count();
                                 attributes.push(attribute);
                             } else {
                                 return Err(MarkupParseErr::AttributeNotClosed(attribute.name));
@@ -216,7 +213,7 @@ impl std::str::FromStr for LineMarkup {
                         continue;
                     } else {
                         // this is to kill the `:` we just pushed
-                        let value = clean_text[..clean_text.len() - 1].to_owned();
+                        let value = clean_text[..clean_text.chars().count() - 1].to_owned();
 
                         let ws_start = stream.peek_index();
                         stream.eat_whitespace();
@@ -226,7 +223,7 @@ impl std::str::FromStr for LineMarkup {
                         // and toss it out there!
                         attributes.push(Attribute {
                             name: "character".to_string(),
-                            range: 0..clean_text.len(),
+                            range: 0..clean_text.chars().count(),
                             properties: vec![Property {
                                 name: "name".to_string(),
                                 value: MarkupValue::String(value),
@@ -309,7 +306,7 @@ fn markup_from_str(s: &str) -> MarkupValue {
 }
 
 /// A struct wrapper for parsing
-struct TokenStream<'a>(Peekable<Enumerate<Chars<'a>>>, &'a str);
+struct TokenStream<'a>(Peekable<CharIndices<'a>>, &'a str);
 
 impl TokenStream<'_> {
     /// Peeks, and if at end of stream, returns `len`
@@ -413,7 +410,7 @@ impl TokenStream<'_> {
         self.not_finished()?;
 
         let name_start = self.peek_index();
-        self.eat_while(|chr| chr.is_ascii_alphanumeric() || chr == '_');
+        self.eat_while(|chr| chr == '_' || !(chr.is_whitespace() || chr.is_ascii_punctuation()));
         let end = self.peek_index();
 
         let attribute_name_range = name_start..end;
@@ -729,5 +726,191 @@ mod tests {
         assert_eq!(output.attributes[0].range.start, 9);
         assert_eq!(output.attributes[0].range.end, output.clean_text.len());
         assert_eq!(output.attributes[0].name, "nomarkup");
+    }
+
+    /// ----- The following tests are based on the Yarn Spinner repo.
+    #[test]
+    fn markup_parsing() {
+        let line_markup = "A [b]B[/b]".parse::<LineMarkup>().unwrap();
+        assert_eq!(line_markup.clean_text, "A B");
+        assert_eq!(line_markup.attributes.len(), 1);
+        assert_eq!(line_markup.attributes[0].name, "b");
+        assert_eq!(line_markup.attributes[0].range, 2..3);
+    }
+
+    #[test]
+    fn overlapping_attributes() {
+        let line_markup = "[a][b][c]X[/b][/a]X[/c]".parse::<LineMarkup>().unwrap();
+        assert_eq!(line_markup.clean_text, "XX");
+        assert_eq!(line_markup.attributes.len(), 3);
+
+        // we don't promise order of the attributes
+        assert!(line_markup.attributes.iter().any(|v| v.name == "a"));
+        assert!(line_markup.attributes.iter().any(|v| v.name == "b"));
+        assert!(line_markup.attributes.iter().any(|v| v.name == "c"));
+    }
+
+    #[test]
+    fn text_extraction() {
+        let line_markup = "A [b]B [c]C[/c][/b]".parse::<LineMarkup>().unwrap();
+        assert_eq!(line_markup.clean_text, "A B C");
+        assert_eq!(line_markup.attributes.len(), 2);
+
+        let b = line_markup
+            .attributes
+            .iter()
+            .find(|v| v.name == "b")
+            .unwrap();
+        assert_eq!(&line_markup.clean_text[b.range.clone()], "B C");
+
+        let c = line_markup
+            .attributes
+            .iter()
+            .find(|v| v.name == "c")
+            .unwrap();
+        assert_eq!(&line_markup.clean_text[c.range.clone()], "C");
+    }
+
+    /*
+    snip -- in yarn spinner in C#, attribute removal is tested here.
+    we don't support attribute remove ourselves -- instead, users can do that.
+     */
+
+    #[test]
+    fn finding_attributes() {
+        let line_markup = "A [b]B[/b] [b]C[/b]".parse::<LineMarkup>().unwrap();
+        assert_eq!(line_markup.clean_text, "A B C");
+        let attribute = line_markup
+            .attributes
+            .iter()
+            .find(|v| v.name == "b")
+            .unwrap();
+
+        assert_eq!(*attribute, line_markup.attributes[0]);
+        assert_ne!(*attribute, line_markup.attributes[1]);
+
+        assert!(!line_markup.attributes.iter().any(|v| v.name == "c"));
+    }
+
+    #[test]
+    fn multibyte_character_parsing() {
+        fn quick_check(input: &str, clean_txt: &str, attribute_name: &str, rng: Range<usize>) {
+            let line_markup = input.parse::<LineMarkup>().unwrap();
+            assert_eq!(line_markup.clean_text, clean_txt);
+            assert_eq!(line_markup.attributes.len(), 1);
+            assert_eq!(line_markup.attributes[0].range, rng);
+            assert_eq!(line_markup.attributes[0].name, attribute_name);
+        }
+
+        // there are two kinds of accent marks and i want to track both of them
+        const STANDARD: char = 'á';
+        const WEIRD: &str = "á";
+
+        // boring dummy
+        quick_check("S [a]S[/a]", "S S", "a", 2..3);
+
+        quick_check(
+            &format!("{WEIRD} [{WEIRD}]S[/{WEIRD}]"),
+            &format!("{WEIRD} S"),
+            WEIRD,
+            3..4,
+        );
+        quick_check(
+            &format!("{WEIRD} [a]{WEIRD}[/a]"),
+            &format!("{WEIRD} {WEIRD}"),
+            "a",
+            3..5,
+        );
+        quick_check(
+            &format!("{WEIRD} [a]S[/a]"),
+            &format!("{WEIRD} S"),
+            "a",
+            3..4,
+        );
+        quick_check(&format!("S [{WEIRD}]S[/{WEIRD}]"), "S S", WEIRD, 2..3);
+        quick_check(
+            &format!("S [a]{WEIRD}[/a]"),
+            &format!("S {WEIRD}"),
+            "a",
+            2..4,
+        );
+
+        quick_check(
+            &format!("{STANDARD} [{STANDARD}]S[/{STANDARD}]"),
+            &format!("{STANDARD} S"),
+            &STANDARD.to_string(),
+            2..3,
+        );
+        quick_check(
+            &format!("{STANDARD} [a]{STANDARD}[/a]"),
+            &format!("{STANDARD} {STANDARD}"),
+            "a",
+            2..3,
+        );
+        quick_check(
+            &format!("{STANDARD} [a]S[/a]"),
+            &format!("{STANDARD} S"),
+            "a",
+            2..3,
+        );
+        quick_check(
+            &format!("S [{STANDARD}]S[/{STANDARD}]"),
+            "S S",
+            &STANDARD.to_string(),
+            2..3,
+        );
+        quick_check(
+            &format!("S [a]{STANDARD}[/a]"),
+            &format!("S {STANDARD}"),
+            "a",
+            2..3,
+        );
+
+        // couple of different characters, truly just googling "chinese characters".
+        quick_check("漢 [字]?[/字]", "漢 ?", "字", 2..3);
+    }
+
+    #[test]
+    fn unexpected_close_marker_throws() {
+        //     [Theory]
+        //     [InlineData("[a][/a][/b]")]
+        //     [InlineData("[/b]")]
+        //     [InlineData("[a][/][/b]")]
+        //     public void TestUnexpectedCloseMarkerThrows(string input) {
+        //         var parsingInvalidMarkup = new Action(() =>
+        //         {
+        //             var markup = dialogue.ParseMarkup(input);
+        //         });
+
+        //         parsingInvalidMarkup.Should().Throw<MarkupParseException>();
+        //     }
+    }
+
+    #[test]
+    fn markup_shortcut_property_parsing() {
+        //         var line = "[a=1]s[/a]";
+        //         var markup = dialogue.ParseMarkup(line);
+
+        //         // Should have a single attribute, "a", at position 0 and
+        //         // length 1
+        //         var attribute = markup.Attributes[0];
+        //         attribute.Name.Should().Be("a");
+        //         attribute.Position.Should().Be(0);
+        //         attribute.Length.Should().Be(1);
+
+        //         // Should have a single property on this attribute, "a". Value
+        //         // should be an integer, 1
+        //         var value = attribute.Properties["a"];
+
+        //         value.Type.Should().Be(MarkupValueType.Integer);
+        //         value.IntegerValue.Should().Be(1);
+    }
+
+    #[test]
+    fn markup_multiple_property() {
+        //         var line = "[a p1=1 p2=2]s[/a]";
+        //         var markup = dialogue.ParseMarkup(line);
+
+        //         markup.Attributes[0].Name.Should().Be("a");
     }
 }
