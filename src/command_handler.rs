@@ -32,14 +32,21 @@ pub fn is_default_function(func_name: &str) -> bool {
             | "Number.NotEqualTo"
             | "String.EqualTo"
             | "String.NotEqualTo"
-            | "Boolean.EqualTo"
-            | "Boolean.NotEqualTo"
+            | "Bool.EqualTo"
+            | "Bool.NotEqualTo"
             | "Number.GreaterThan"
             | "Number.LessThan"
+            | "Number.GreaterThanOrEqualTo"
+            | "Number.LessThanOrEqualTo"
+            | "Bool.Or"
+            | "Bool.And"
+            | "Bool.Xor"
+            | "Bool.Not"
             | "Number.Add"
-            | "Number.Subtract"
+            | "Number.Minus"
             | "Number.Multiply"
             | "Number.Divide"
+            | "Number.Modulo"
     )
 }
 
@@ -205,87 +212,135 @@ fn handle_known_default_function(func_data: &FuncData) -> Result<YarnValue, Func
         }
         "Number.EqualTo" => {
             param_count_is(&func_data.parameters, 2)?;
-            let a = extract_f32(&func_data.parameters[0])?;
-            let b = extract_f32(&func_data.parameters[1])?;
+            let a = extract_f32(&func_data.parameters[1])?;
+            let b = extract_f32(&func_data.parameters[0])?;
 
             Ok(YarnValue::Bool(a == b))
         },
         "Number.NotEqualTo" => {
             param_count_is(&func_data.parameters, 2)?;
-            let a = extract_f32(&func_data.parameters[0])?;
-            let b = extract_f32(&func_data.parameters[1])?;
+            let a = extract_f32(&func_data.parameters[1])?;
+            let b = extract_f32(&func_data.parameters[0])?;
 
             Ok(YarnValue::Bool(a != b))
         },
         "String.EqualTo" => {
             param_count_is(&func_data.parameters, 2)?;
-            let a = extract_str(&func_data.parameters[0])?;
-            let b = extract_str(&func_data.parameters[1])?;
+            let a = extract_str(&func_data.parameters[1])?;
+            let b = extract_str(&func_data.parameters[0])?;
 
             Ok(YarnValue::Bool(a == b))
         },
         "String.NotEqualTo" => {
             param_count_is(&func_data.parameters, 2)?;
-            let a = extract_str(&func_data.parameters[0])?;
-            let b = extract_str(&func_data.parameters[1])?;
+            let a = extract_str(&func_data.parameters[1])?;
+            let b = extract_str(&func_data.parameters[0])?;
 
             Ok(YarnValue::Bool(a != b))
         },
-        "Boolean.EqualTo" => {
+        "Bool.EqualTo" => {
             param_count_is(&func_data.parameters, 2)?;
-            let a = extract_bool(&func_data.parameters[0])?;
-            let b = extract_bool(&func_data.parameters[1])?;
+            let a = extract_bool(&func_data.parameters[1])?;
+            let b = extract_bool(&func_data.parameters[0])?;
 
             Ok(YarnValue::Bool(a == b))
         },
-        "Boolean.NotEqualTo" => {
+        "Bool.NotEqualTo" => {
             param_count_is(&func_data.parameters, 2)?;
-            let a = extract_bool(&func_data.parameters[0])?;
-            let b = extract_bool(&func_data.parameters[1])?;
+            let a = extract_bool(&func_data.parameters[1])?;
+            let b = extract_bool(&func_data.parameters[0])?;
 
             Ok(YarnValue::Bool(a != b))
         },
         "Number.GreaterThan" => {
             param_count_is(&func_data.parameters, 2)?;
-            let a = extract_f32(&func_data.parameters[0])?;
-            let b = extract_f32(&func_data.parameters[1])?;
+            let a = extract_f32(&func_data.parameters[1])?;
+            let b = extract_f32(&func_data.parameters[0])?;
 
             Ok(YarnValue::Bool(a > b))
         },
         "Number.LessThan" => {
             param_count_is(&func_data.parameters, 2)?;
-            let a = extract_f32(&func_data.parameters[0])?;
-            let b = extract_f32(&func_data.parameters[1])?;
+            let a = extract_f32(&func_data.parameters[1])?;
+            let b = extract_f32(&func_data.parameters[0])?;
 
             Ok(YarnValue::Bool(a < b))
         },
+        "Number.GreaterThanOrEqualTo" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_f32(&func_data.parameters[1])?;
+            let b = extract_f32(&func_data.parameters[0])?;
+
+            Ok(YarnValue::Bool(a >= b))
+        },
+        "Number.LessThanOrEqualTo" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_f32(&func_data.parameters[1])?;
+            let b = extract_f32(&func_data.parameters[0])?;
+
+            Ok(YarnValue::Bool(a <= b))
+        },
+        "Bool.Or" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_bool(&func_data.parameters[1])?;
+            let b = extract_bool(&func_data.parameters[0])?;
+
+            Ok(YarnValue::Bool(a || b))
+        },
+        "Bool.And" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_bool(&func_data.parameters[1])?;
+            let b = extract_bool(&func_data.parameters[0])?;
+
+            Ok(YarnValue::Bool(a && b))
+        },
+        "Bool.Xor" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_bool(&func_data.parameters[1])?;
+            let b = extract_bool(&func_data.parameters[0])?;
+
+            Ok(YarnValue::Bool(a ^ b))
+        },
+        "Bool.Not" => {
+            param_count_is(&func_data.parameters, 1)?;
+            let a = extract_bool(&func_data.parameters[0])?;
+
+            Ok(YarnValue::Bool(!a))
+        },
         "Number.Add" => {
             param_count_is(&func_data.parameters, 2)?;
-            let a = extract_f32(&func_data.parameters[0])?;
-            let b = extract_f32(&func_data.parameters[1])?;
+            let a = extract_f32(&func_data.parameters[1])?;
+            let b = extract_f32(&func_data.parameters[0])?;
 
             Ok(YarnValue::F32(a + b))
         },
-        "Number.Subtract" => {
+        "Number.Minus" => {
             param_count_is(&func_data.parameters, 2)?;
-            let a = extract_f32(&func_data.parameters[0])?;
-            let b = extract_f32(&func_data.parameters[1])?;
+            let a = extract_f32(&func_data.parameters[1])?;
+            let b = extract_f32(&func_data.parameters[0])?;
 
             Ok(YarnValue::F32(a - b))
         },
         "Number.Multiply" => {
             param_count_is(&func_data.parameters, 2)?;
-            let a = extract_f32(&func_data.parameters[0])?;
-            let b = extract_f32(&func_data.parameters[1])?;
+            let a = extract_f32(&func_data.parameters[1])?;
+            let b = extract_f32(&func_data.parameters[0])?;
 
             Ok(YarnValue::F32(a * b))
         },
         "Number.Divide" => {
             param_count_is(&func_data.parameters, 2)?;
-            let a = extract_f32(&func_data.parameters[0])?;
-            let b = extract_f32(&func_data.parameters[1])?;
+            let a = extract_f32(&func_data.parameters[1])?;
+            let b = extract_f32(&func_data.parameters[0])?;
 
             Ok(YarnValue::F32(a / b))
+        },
+        "Number.Modulo" => {
+            param_count_is(&func_data.parameters, 2)?;
+            let a = extract_f32(&func_data.parameters[1])?;
+            let b = extract_f32(&func_data.parameters[0])?;
+
+            Ok(YarnValue::F32(a % b))
         },
         _ => unreachable!(),
     }
