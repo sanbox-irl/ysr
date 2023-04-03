@@ -1,8 +1,4 @@
-use std::{
-    iter::{Enumerate, Peekable},
-    ops::Range,
-    str::Chars,
-};
+use std::{iter::Peekable, ops::Range, str::CharIndices};
 
 #[derive(Debug)]
 pub struct LineMarkup {
@@ -16,7 +12,7 @@ impl std::str::FromStr for LineMarkup {
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         let mut attributes = vec![];
         let mut open: Vec<Attribute> = vec![];
-        let mut stream = TokenStream(input.chars().enumerate().peekable(), input);
+        let mut stream = TokenStream(input.char_indices().peekable(), input);
 
         // our working buffer
         let mut assigned_character = false;
@@ -37,7 +33,7 @@ impl std::str::FromStr for LineMarkup {
                     // that's the close all fella
                     if is_closing && stream.consume_if(|chr| chr == ']') {
                         for mut attribute in open.drain(..) {
-                            attribute.range.end = clean_text.len();
+                            attribute.range.end = clean_text.chars().count();
 
                             attributes.push(attribute);
                         }
@@ -62,7 +58,7 @@ impl std::str::FromStr for LineMarkup {
                                 let pos = (open.len() - 1) - pos;
 
                                 let mut attribute = open.remove(pos);
-                                attribute.range.end = clean_text.len();
+                                attribute.range.end = clean_text.chars().count();
 
                                 attributes.push(attribute);
 
@@ -78,7 +74,7 @@ impl std::str::FromStr for LineMarkup {
 
                     let mut attribute = Attribute {
                         name: attribute_name,
-                        range: clean_text.len()..usize::MAX,
+                        range: clean_text.chars().count()..usize::MAX,
                         properties: vec![],
                     };
 
@@ -125,8 +121,9 @@ impl std::str::FromStr for LineMarkup {
                             stream.next();
                         }
 
-                        // name for a property
-                        (_, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_') => {
+                        // name for a property -- we don't really care what kind of character it is
+                        // because of utf8 localization reasons
+                        _ => {
                             // okay grab all the name property keys we can
                             loop {
                                 let property_name = stream.consume_ident()?;
@@ -154,9 +151,6 @@ impl std::str::FromStr for LineMarkup {
                                     break;
                                 }
                             }
-                        }
-                        c => {
-                            panic!("probably an invalid name for a property {:?}", c);
                         }
                     }
 
@@ -202,7 +196,7 @@ impl std::str::FromStr for LineMarkup {
                             }
 
                             if found_end {
-                                attribute.range.end = clean_text.len();
+                                attribute.range.end = clean_text.chars().count();
                                 attributes.push(attribute);
                             } else {
                                 return Err(MarkupParseErr::AttributeNotClosed(attribute.name));
@@ -219,7 +213,7 @@ impl std::str::FromStr for LineMarkup {
                         continue;
                     } else {
                         // this is to kill the `:` we just pushed
-                        let value = clean_text[..clean_text.len() - 1].to_owned();
+                        let value = clean_text[..clean_text.chars().count() - 1].to_owned();
 
                         let ws_start = stream.peek_index();
                         stream.eat_whitespace();
@@ -229,7 +223,7 @@ impl std::str::FromStr for LineMarkup {
                         // and toss it out there!
                         attributes.push(Attribute {
                             name: "character".to_string(),
-                            range: 0..clean_text.len(),
+                            range: 0..clean_text.chars().count(),
                             properties: vec![Property {
                                 name: "name".to_string(),
                                 value: MarkupValue::String(value),
@@ -312,7 +306,7 @@ fn markup_from_str(s: &str) -> MarkupValue {
 }
 
 /// A struct wrapper for parsing
-struct TokenStream<'a>(Peekable<Enumerate<Chars<'a>>>, &'a str);
+struct TokenStream<'a>(Peekable<CharIndices<'a>>, &'a str);
 
 impl TokenStream<'_> {
     /// Peeks, and if at end of stream, returns `len`
@@ -416,7 +410,7 @@ impl TokenStream<'_> {
         self.not_finished()?;
 
         let name_start = self.peek_index();
-        self.eat_while(|chr| chr.is_ascii_alphanumeric() || chr == '_');
+        self.eat_while(|chr| chr == '_' || !(chr.is_whitespace() || chr.is_ascii_punctuation()));
         let end = self.peek_index();
 
         let attribute_name_range = name_start..end;
@@ -800,23 +794,80 @@ mod tests {
 
     #[test]
     fn multibyte_character_parsing() {
-        //     [Theory]
-        //     [InlineData("á [á]S[/á]")]
-        //     [InlineData("á [a]á[/a]")]
-        //     [InlineData("á [a]S[/a]")]
-        //     [InlineData("S [á]S[/á]")]
-        //     [InlineData("S [a]á[/a]")]
-        //     [InlineData("S [a]S[/a]")]
-        //     public void TestMultibyteCharacterParsing(string input) {
-        //         var markup = dialogue.ParseMarkup(input);
+        fn quick_check(input: &str, clean_txt: &str, attribute_name: &str, rng: Range<usize>) {
+            let line_markup = input.parse::<LineMarkup>().unwrap();
+            assert_eq!(line_markup.clean_text, clean_txt);
+            assert_eq!(line_markup.attributes.len(), 1);
+            assert_eq!(line_markup.attributes[0].range, rng);
+            assert_eq!(line_markup.attributes[0].name, attribute_name);
+        }
 
-        //         // All versions of this string should have the same position
-        //         // and length of the attribute, despite the presence of
-        //         // multibyte characters
-        //         markup.Attributes.Should().ContainSingle();
-        //         markup.Attributes[0].Position.Should().Be(2);
-        //         markup.Attributes[0].Length.Should().Be(1);
-        //     }
+        // there are two kinds of accent marks and i want to track both of them
+        const STANDARD: char = 'á';
+        const WEIRD: &str = "á";
+
+        // boring dummy
+        quick_check("S [a]S[/a]", "S S", "a", 2..3);
+
+        quick_check(
+            &format!("{WEIRD} [{WEIRD}]S[/{WEIRD}]"),
+            &format!("{WEIRD} S"),
+            WEIRD,
+            3..4,
+        );
+        quick_check(
+            &format!("{WEIRD} [a]{WEIRD}[/a]"),
+            &format!("{WEIRD} {WEIRD}"),
+            "a",
+            3..5,
+        );
+        quick_check(
+            &format!("{WEIRD} [a]S[/a]"),
+            &format!("{WEIRD} S"),
+            "a",
+            3..4,
+        );
+        quick_check(&format!("S [{WEIRD}]S[/{WEIRD}]"), "S S", WEIRD, 2..3);
+        quick_check(
+            &format!("S [a]{WEIRD}[/a]"),
+            &format!("S {WEIRD}"),
+            "a",
+            2..4,
+        );
+
+        quick_check(
+            &format!("{STANDARD} [{STANDARD}]S[/{STANDARD}]"),
+            &format!("{STANDARD} S"),
+            &STANDARD.to_string(),
+            2..3,
+        );
+        quick_check(
+            &format!("{STANDARD} [a]{STANDARD}[/a]"),
+            &format!("{STANDARD} {STANDARD}"),
+            "a",
+            2..3,
+        );
+        quick_check(
+            &format!("{STANDARD} [a]S[/a]"),
+            &format!("{STANDARD} S"),
+            "a",
+            2..3,
+        );
+        quick_check(
+            &format!("S [{STANDARD}]S[/{STANDARD}]"),
+            "S S",
+            &STANDARD.to_string(),
+            2..3,
+        );
+        quick_check(
+            &format!("S [a]{STANDARD}[/a]"),
+            &format!("S {STANDARD}"),
+            "a",
+            2..3,
+        );
+
+        // couple of different characters, truly just googling "chinese characters".
+        quick_check("漢 [字]?[/字]", "漢 ?", "字", 2..3);
     }
 
     #[test]
