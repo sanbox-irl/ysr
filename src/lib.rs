@@ -120,7 +120,7 @@ impl YarnRunner {
                 }
                 Instruction::JumpIfFalse(node_name) => {
                     let stack_top = state.stack.last().expect("is this possible?");
-                    if stack_top.try_to_bool()? {
+                    if !stack_top.try_to_bool()? {
                         state.instruction = *node
                             .jump_table
                             .get(node_name)
