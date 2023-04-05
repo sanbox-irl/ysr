@@ -1,4 +1,4 @@
-use std::{iter::Peekable, ops::Range, str::CharIndices};
+use std::{collections::HashMap, iter::Peekable, ops::Range, str::CharIndices};
 
 #[derive(Debug)]
 pub struct LineMarkup {
@@ -75,7 +75,7 @@ impl std::str::FromStr for LineMarkup {
                     let mut attribute = Attribute {
                         name: attribute_name,
                         range: clean_text.chars().count()..usize::MAX,
-                        properties: vec![],
+                        properties: HashMap::new(),
                     };
 
                     // check if it's self closing...
@@ -111,10 +111,7 @@ impl std::str::FromStr for LineMarkup {
                             let attribute_name =
                                 stream.get(attribute_name_range).unwrap().to_owned();
 
-                            attribute.properties.push(Property {
-                                name: attribute_name,
-                                value,
-                            });
+                            attribute.properties.insert(attribute_name, value);
                         }
                         // okay, that's it buds
                         (_, ']') => {
@@ -134,10 +131,7 @@ impl std::str::FromStr for LineMarkup {
 
                                 let value = stream.consume_property_value();
 
-                                attribute.properties.push(Property {
-                                    name: property_name,
-                                    value,
-                                });
+                                attribute.properties.insert(property_name, value);
 
                                 stream.eat_whitespace();
                                 stream.not_finished()?;
@@ -157,15 +151,12 @@ impl std::str::FromStr for LineMarkup {
                     if self_closing {
                         attribute.range.end = attribute.range.start;
 
-                        let trim_whitespace = if let Some(trim_whitespace_property) = attribute
-                            .properties
-                            .iter()
-                            .find(|v| v.name == "trimwhitespace")
-                        {
-                            matches!(trim_whitespace_property.value, MarkupValue::Bool(true))
-                        } else {
-                            true
-                        };
+                        let trim_whitespace =
+                            if let Some(tw_value) = attribute.properties.get("trimwhitespace") {
+                                matches!(tw_value, MarkupValue::Bool(true))
+                            } else {
+                                true
+                            };
                         attributes.push(attribute);
 
                         if trim_whitespace {
@@ -202,6 +193,15 @@ impl std::str::FromStr for LineMarkup {
                                 return Err(MarkupParseErr::AttributeNotClosed(attribute.name));
                             }
                         } else {
+                            // check if it's a character, so we don't double attribute
+                            if attribute.name == "character" {
+                                // we should ABSOLUTELY do some kind of checking to make sure
+                                // the character is good here?
+                                let x = "add some testing here";
+
+                                assigned_character = true;
+                            }
+
                             open.push(attribute);
                         }
                     }
@@ -224,10 +224,9 @@ impl std::str::FromStr for LineMarkup {
                         attributes.push(Attribute {
                             name: "character".to_string(),
                             range: 0..clean_text.chars().count(),
-                            properties: vec![Property {
-                                name: "name".to_string(),
-                                value: MarkupValue::String(value),
-                            }],
+                            properties: [("name".to_string(), MarkupValue::String(value))]
+                                .into_iter()
+                                .collect(),
                         });
 
                         assigned_character = true;
@@ -255,13 +254,7 @@ impl std::str::FromStr for LineMarkup {
 pub struct Attribute {
     name: String,
     range: Range<usize>,
-    properties: Vec<Property>,
-}
-
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct Property {
-    name: String,
-    value: MarkupValue,
+    properties: HashMap<String, MarkupValue>,
 }
 
 /// A markup value. Markup can have distinct integers from floats, so uses a different
@@ -378,30 +371,48 @@ impl TokenStream<'_> {
 
         let quote_start = self.consume_if(|chr| chr == '"');
         if quote_start {
+            let mut output = String::new();
+
             // eat until the end quote
-            let success = self.eat_while(|chr| chr != '"');
+            let success = loop {
+                match self.0.peek() {
+                    Some((_, chr)) => {
+                        // escape a double quotation mark
+                        if *chr == '\\' {
+                            self.0.next();
+
+                            if self.0.peek().map(|v| v.1 == '"').unwrap_or(false) {
+                                output.push('"');
+                                self.0.next();
+                            }
+
+                            continue;
+                        }
+
+                        if *chr == '"' {
+                            self.next();
+
+                            break true;
+                        } else {
+                            output.push(self.0.next().unwrap().1);
+                        }
+                    }
+                    None => {
+                        break false;
+                    }
+                }
+            };
+
             if !success {
                 panic!("we didn't get an end quotation");
             }
-            self.next();
+
+            MarkupValue::String(output)
         } else {
             // eat the rest of the word under whitespace or a `]`.
             self.eat_while(|chr| !chr.is_whitespace() && chr != ']' && chr != '/');
-        }
-
-        let end = self.peek_index();
-
-        let short_hand_attribute_txt = if quote_start {
-            // sheer off the quotes!
-            self.get((start + 1)..(end - 1)).unwrap()
-        } else {
-            self.get(start..end).unwrap()
-        };
-
-        if quote_start {
-            MarkupValue::String(short_hand_attribute_txt.to_owned())
-        } else {
-            markup_from_str(short_hand_attribute_txt)
+            let end = self.peek_index();
+            markup_from_str(self.get(start..end).unwrap())
         }
     }
 
@@ -453,9 +464,8 @@ mod tests {
         assert_eq!(chr.name, "character");
         assert_eq!(chr.range, 0..10);
         assert_eq!(chr.properties.len(), 1);
-        assert_eq!(chr.properties[0].name, "name");
         assert_eq!(
-            chr.properties[0].value,
+            *chr.properties.get("name").unwrap(),
             MarkupValue::String("Narrator".to_string())
         );
     }
@@ -477,9 +487,8 @@ mod tests {
         assert_eq!(chr.name, "character");
         assert_eq!(chr.range, 0..19);
         assert_eq!(chr.properties.len(), 1);
-        assert_eq!(chr.properties[0].name, "name");
         assert_eq!(
-            chr.properties[0].value,
+            *chr.properties.get("name").unwrap(),
             MarkupValue::String("Narrator".to_string())
         );
     }
@@ -497,9 +506,8 @@ mod tests {
         assert_eq!(chr.name, "character");
         assert_eq!(chr.range, 0..9);
         assert_eq!(chr.properties.len(), 1);
-        assert_eq!(chr.properties[0].name, "name");
         assert_eq!(
-            chr.properties[0].value,
+            *chr.properties.get("name").unwrap(),
             MarkupValue::String("Narrator".to_string())
         );
     }
@@ -563,8 +571,7 @@ mod tests {
         assert_eq!(one.range, 9..output.clean_text.len());
         assert_eq!(one.properties.len(), 1);
 
-        assert_eq!(one.properties[0].name, "wave");
-        assert_eq!(one.properties[0].value, MarkupValue::I32(3));
+        assert_eq!(*one.properties.get("wave").unwrap(), MarkupValue::I32(3));
     }
 
     #[test]
@@ -580,8 +587,7 @@ mod tests {
         assert_eq!(one.range, 9..output.clean_text.len());
         assert_eq!(one.properties.len(), 1);
 
-        assert_eq!(one.properties[0].name, "wave");
-        assert_eq!(one.properties[0].value, MarkupValue::F32(3.1));
+        assert_eq!(*one.properties.get("wave").unwrap(), MarkupValue::F32(3.1));
     }
 
     #[test]
@@ -597,9 +603,8 @@ mod tests {
         assert_eq!(one.range, 9..output.clean_text.len());
         assert_eq!(one.properties.len(), 1);
 
-        assert_eq!(one.properties[0].name, "wave");
         assert_eq!(
-            one.properties[0].value,
+            *one.properties.get("wave").unwrap(),
             MarkupValue::String("yolo".to_string())
         );
     }
@@ -617,9 +622,8 @@ mod tests {
         assert_eq!(one.range, 9..output.clean_text.len());
         assert_eq!(one.properties.len(), 1);
 
-        assert_eq!(one.properties[0].name, "wave");
         assert_eq!(
-            one.properties[0].value,
+            *one.properties.get("wave").unwrap(),
             MarkupValue::String("yooloo there".to_string())
         );
     }
@@ -665,9 +669,8 @@ mod tests {
         assert_eq!(output.attributes[0].range.end, 9);
         assert_eq!(output.attributes[0].name, "screen_shake");
         assert_eq!(output.attributes[0].properties.len(), 1);
-        assert_eq!(output.attributes[0].properties[0].name, "value");
         assert_eq!(
-            output.attributes[0].properties[0].value,
+            *output.attributes[0].properties.get("value").unwrap(),
             MarkupValue::F32(0.9)
         );
     }
@@ -686,9 +689,8 @@ mod tests {
         assert_eq!(output.attributes[0].range.end, 9);
         assert_eq!(output.attributes[0].name, "screen_shake");
         assert_eq!(output.attributes[0].properties.len(), 1);
-        assert_eq!(output.attributes[0].properties[0].name, "value");
         assert_eq!(
-            output.attributes[0].properties[0].value,
+            *output.attributes[0].properties.get("value").unwrap(),
             MarkupValue::String("0.9".to_string())
         );
     }
@@ -707,9 +709,8 @@ mod tests {
         assert_eq!(output.attributes[0].range.end, 9);
         assert_eq!(output.attributes[0].name, "screen_shake");
         assert_eq!(output.attributes[0].properties.len(), 1);
-        assert_eq!(output.attributes[0].properties[0].name, "screen_shake");
         assert_eq!(
-            output.attributes[0].properties[0].value,
+            *output.attributes[0].properties.get("screen_shake").unwrap(),
             MarkupValue::String("0.9".to_string())
         );
     }
@@ -896,9 +897,8 @@ mod tests {
         assert_eq!(line_markup.attributes[0].range, 0..1);
         assert_eq!(line_markup.attributes[0].name, "a");
         assert_eq!(line_markup.attributes[0].properties.len(), 1);
-        assert_eq!(line_markup.attributes[0].properties[0].name, "a");
         assert_eq!(
-            line_markup.attributes[0].properties[0].value,
+            *line_markup.attributes[0].properties.get("a").unwrap(),
             MarkupValue::I32(1)
         );
     }
@@ -909,22 +909,19 @@ mod tests {
         let a_attrib = line.attributes.iter().find(|v| v.name == "a").unwrap();
         assert_eq!(a_attrib.properties.len(), 2);
 
-        let p1 = &a_attrib.properties[0];
-        assert_eq!(p1.name, "p1");
-        assert_eq!(p1.value, MarkupValue::I32(1));
-
-        let p2 = &a_attrib.properties[1];
-        assert_eq!(p2.name, "p2");
-        assert_eq!(p2.value, MarkupValue::I32(2));
+        assert_eq!(*a_attrib.properties.get("p1").unwrap(), MarkupValue::I32(1));
+        assert_eq!(*a_attrib.properties.get("p2").unwrap(), MarkupValue::I32(2));
     }
 
     #[test]
     fn markup_property_parsing() {
         fn tester(input: &str, expected_value: MarkupValue) {
             let line = input.parse::<LineMarkup>().unwrap();
-            let prop = &line.attributes[0].properties[0];
-            assert_eq!(prop.name, "p");
-            assert_eq!(prop.value, expected_value);
+
+            assert_eq!(
+                *line.attributes[0].properties.get("p").unwrap(),
+                expected_value
+            );
         }
 
         tester(
@@ -932,167 +929,166 @@ mod tests {
             MarkupValue::String("string".to_owned()),
         );
         tester(
-            "[a p=\"str\"ing\"]s[/a]",
+            "[a p=\"str\\\"ing\"]s[/a]",
+            MarkupValue::String("str\"ing".to_owned()),
+        );
+        tester(
+            "[a p=string]s[/a]",
             MarkupValue::String("string".to_owned()),
+        );
+        tester("[a p=42]s[/a]", MarkupValue::I32(42));
+        tester("[a p=13.37]s[/a]", MarkupValue::F32(13.37));
+        tester("[a p=true]s[/a]", MarkupValue::Bool(true));
+        tester("[a p=false]s[/a]", MarkupValue::Bool(false));
+    }
+
+    #[test]
+    fn test_multiple_attributes() {
+        fn test(input: &str) {
+            let line = input.parse::<LineMarkup>().unwrap();
+            assert_eq!(line.clean_text, "A B C D");
+
+            assert_eq!(line.attributes.len(), 2);
+
+            let b = line.attributes.iter().find(|v| v.name == "b").unwrap();
+            assert_eq!(b.range, 2..5);
+            assert!(b.properties.is_empty());
+
+            let c = line.attributes.iter().find(|v| v.name == "c").unwrap();
+            assert_eq!(c.range, 4..5);
+            assert!(c.properties.is_empty());
+        }
+
+        test("A [b]B [c]C[/c][/b] D");
+        test("A [b]B [c]C[/b][/c] D");
+        test("A [b]B [c]C[/] D");
+    }
+
+    #[test]
+    fn self_closing_attributes() {
+        let line = "A [a/] B".parse::<LineMarkup>().unwrap();
+        assert_eq!(line.clean_text, "A B");
+        assert_eq!(line.attributes.len(), 1);
+
+        let atty = &line.attributes[0];
+        assert_eq!(atty.name, "a");
+        assert!(atty.properties.is_empty());
+        assert_eq!(atty.range, 2..2);
+    }
+
+    #[test]
+    fn trailing_whitespace() {
+        assert_eq!("A [a/] B".parse::<LineMarkup>().unwrap().clean_text, "A B");
+        assert_eq!(
+            "A [a trimwhitespace=true/] B"
+                .parse::<LineMarkup>()
+                .unwrap()
+                .clean_text,
+            "A B"
+        );
+        assert_eq!(
+            "A [a trimwhitespace=false/] B"
+                .parse::<LineMarkup>()
+                .unwrap()
+                .clean_text,
+            "A  B"
+        );
+        // assert_eq!(
+        //     "A [nomarkup/] B".parse::<LineMarkup>().unwrap().clean_text,
+        //     "A  B"
+        // );
+        assert_eq!(
+            "A [nomarkup trimwhitespace=false/] B"
+                .parse::<LineMarkup>()
+                .unwrap()
+                .clean_text,
+            "A  B"
+        );
+        assert_eq!(
+            "A [nomarkup trimwhitespace=true/] B"
+                .parse::<LineMarkup>()
+                .unwrap()
+                .clean_text,
+            "A B"
+        );
+    }
+
+    #[test]
+    fn implicit_character_parsing() {
+        fn test(input: &str) {
+            let line = input.parse::<LineMarkup>().unwrap();
+            // assert_eq!(line.clean_text, "Mae: Wow!");
+            assert_eq!(line.attributes.len(), 1);
+
+            let atty = &line.attributes[0];
+            assert_eq!(atty.name, "character");
+            assert_eq!(atty.range, 0..5);
+            assert_eq!(atty.properties.len(), 1);
+
+            assert_eq!(
+                *atty.properties.get("name").unwrap(),
+                MarkupValue::String("Mae".to_string())
+            );
+        }
+
+        test("Mae: Wow!");
+        test("[character name=\"Mae\"]Mae: [/character]Wow!");
+    }
+
+    #[test]
+    fn no_markup_mode_parsing() {
+        let line = "S [a]S[/a] [nomarkup][a]S;][/a][/nomarkup]"
+            .parse::<LineMarkup>()
+            .unwrap();
+
+        assert_eq!(line.clean_text, "S S [a]S;][/a]");
+
+        let a = line.attributes.iter().find(|v| v.name == "a").unwrap();
+        assert_eq!(a.range, 2..3);
+
+        let no_markup_atty = line
+            .attributes
+            .iter()
+            .find(|v| v.name == "nomarkup")
+            .unwrap();
+        assert_eq!(no_markup_atty.range, 4..14);
+    }
+
+    #[test]
+    fn escaping() {
+        let line = r#"[a]hello \[b\]hello\[/b\][/a]"#.parse::<LineMarkup>().unwrap();
+        assert_eq!(line.clean_text, "hello [b]hello[/b]");
+        assert_eq!(line.attributes.len(), 1);
+
+        let atty = &line.attributes[0];
+        assert_eq!(atty.name, "a");
+        assert_eq!(atty.range, 0..18);
+    }
+
+    #[test]
+    fn numeric_properties() {
+        let line = "[select value=1 1=one 2=two 3=three /]"
+            .parse::<LineMarkup>()
+            .unwrap();
+
+        assert_eq!(line.attributes.len(), 1);
+        let atty = &line.attributes[0];
+
+        assert_eq!(atty.name, "select");
+        assert_eq!(atty.properties.len(), 4);
+
+        assert_eq!(*atty.properties.get("value").unwrap(), MarkupValue::I32(1));
+        assert_eq!(
+            *atty.properties.get("1").unwrap(),
+            MarkupValue::String("one".to_string())
+        );
+        assert_eq!(
+            *atty.properties.get("2").unwrap(),
+            MarkupValue::String("two".to_string())
+        );
+        assert_eq!(
+            *atty.properties.get("3").unwrap(),
+            MarkupValue::String("three".to_string())
         );
     }
 }
-
-// [Theory]
-// [InlineData(@"", MarkupValueType.String, @"str""ing")]
-// [InlineData("[a p=string]s[/a]", MarkupValueType.String, "string")]
-// [InlineData("[a p=42]s[/a]", MarkupValueType.Integer, "42")]
-// [InlineData("[a p=13.37]s[/a]", MarkupValueType.Float, "13.37")]
-// [InlineData("[a p=true]s[/a]", MarkupValueType.Bool, "True")]
-// [InlineData("[a p=false]s[/a]", MarkupValueType.Bool, "False")]
-// public void TestMarkupPropertyParsing(string input, MarkupValueType expectedType, string expectedValueAsString) {
-//     var markup = dialogue.ParseMarkup(input);
-
-//     var attribute = markup.Attributes[0];
-//     var propertyValue= attribute.Properties["p"];
-
-//     propertyValue.Type.Should().Be(expectedType);
-//     propertyValue.ToString().Should().Be(expectedValueAsString);
-// }
-
-// [Theory]
-// [InlineData("A [b]B [c]C[/c][/b] D")] // attributes can be closed
-// [InlineData("A [b]B [c]C[/b][/c] D")] // attributes can be closed out of order
-// [InlineData("A [b]B [c]C[/] D")] // "[/]" closes all open attributes
-// public void TestMultipleAttributes(string input) {
-//     var markup = dialogue.ParseMarkup(input);
-
-//     markup.Text.Should().Be("A B C D");
-
-//     markup.Attributes.Count.Should().Be(2);
-
-//     markup.Attributes[0].Name.Should().Be("b");
-//     markup.Attributes[0].Position.Should().Be(2);
-//     markup.Attributes[0].SourcePosition.Should().Be(2);
-//     markup.Attributes[0].Length.Should().Be(3);
-
-//     markup.Attributes[1].Name.Should().Be("c");
-//     markup.Attributes[1].Position.Should().Be(4);
-//     markup.Attributes[1].SourcePosition.Should().Be(7);
-//     markup.Attributes[1].Length.Should().Be(1);
-// }
-
-// [Fact]
-// public void TestSelfClosingAttributes() {
-//     var line = "A [a/] B";
-//     var markup = dialogue.ParseMarkup(line);
-
-//     markup.Text.Should().Be("A B");
-
-//     markup.Attributes.Should().ContainSingle();
-
-//     markup.Attributes[0].Name.Should().Be("a");
-//     markup.Attributes[0].Properties.Count.Should().Be(0);
-//     markup.Attributes[0].Position.Should().Be(2);
-//     markup.Attributes[0].Length.Should().Be(0);
-// }
-
-// [Theory]
-// [InlineData("A [a/] B", "A B")]
-// [InlineData("A [a trimwhitespace=true/] B", "A B")]
-// [InlineData("A [a trimwhitespace=false/] B", "A  B")]
-// [InlineData("A [nomarkup/] B", "A  B")]
-// [InlineData("A [nomarkup trimwhitespace=false/] B", "A  B")]
-// [InlineData("A [nomarkup trimwhitespace=true/] B", "A B")]
-// public void TestAttributesMayTrimTrailingWhitespace(string input, string expectedText) {
-//     var markup = dialogue.ParseMarkup(input);
-
-//     markup.Text.Should().Be(expectedText);
-// }
-
-// [Theory]
-// // character attribute can be implicit
-// [InlineData("Mae: Wow!")]
-// // character attribute can also be explicit
-// [InlineData("[character name=\"Mae\"]Mae: [/character]Wow!")]
-// public void TestImplicitCharacterAttributeParsing(string input) {
-//     var markup = dialogue.ParseMarkup(input);
-
-//     markup.Text.Should().Be("Mae: Wow!");
-//     markup.Attributes.Should().ContainSingle();
-
-//     markup.Attributes[0].Name.Should().Be("character");
-//     markup.Attributes[0].Position.Should().Be(0);
-//     markup.Attributes[0].Length.Should().Be(5);
-
-//     markup.Attributes[0].Properties.Count.Should().Be(1);
-//     markup.Attributes[0].Properties["name"].StringValue.Should().Be("Mae");
-// }
-
-// [Fact]
-// public void TestNoMarkupModeParsing() {
-//     var line = "S [a]S[/a] [nomarkup][a]S;][/a][/nomarkup]";
-//     var markup = dialogue.ParseMarkup(line);
-
-//     markup.Text.Should().Be("S S [a]S;][/a]");
-
-//     markup.Attributes.Count.Should().Be(2);
-
-//     markup.Attributes[0].Name.Should().Be("a");
-//     markup.Attributes[0].Position.Should().Be(2);
-//     markup.Attributes[0].Length.Should().Be(1);
-
-//     markup.Attributes[1].Name.Should().Be("nomarkup");
-//     markup.Attributes[1].Position.Should().Be(4);
-//     markup.Attributes[1].Length.Should().Be(10);
-// }
-
-// [Fact]
-// public void TestMarkupEscaping() {
-//     var line = @"[a]hello \[b\]hello\[/b\][/a]";
-//     var markup = dialogue.ParseMarkup(line);
-
-//     markup.Text.Should().Be("hello [b]hello[/b]");
-//     markup.Attributes.Should().ContainSingle();
-//     markup.Attributes[0].Name.Should().Be("a");
-//     markup.Attributes[0].Position.Should().Be(0);
-//     markup.Attributes[0].Length.Should().Be(18);
-// }
-
-// [Fact]
-// public void TestNumericProperties() {
-//     var line = @"[select value=1 1=one 2=two 3=three /]";
-//     var markup = dialogue.ParseMarkup(line);
-
-//     markup.Attributes.Should().ContainSingle();
-//     markup.Attributes[0].Name.Should().Be("select");
-//     markup.Attributes[0].Properties.Count.Should().Be(4);
-//     markup.Attributes[0].Properties["value"].IntegerValue.Should().Be(1);
-//     markup.Attributes[0].Properties["1"].StringValue.Should().Be("one");
-//     markup.Attributes[0].Properties["2"].StringValue.Should().Be("two");
-//     markup.Attributes[0].Properties["3"].StringValue.Should().Be("three");
-
-//     markup.Text.Should().Be("one");
-// }
-
-// [Fact]
-// public void TestNumberPluralisation() {
-
-//     var testCases = new[] {
-//         (Value: 1, Locale: "en", Expected: "a single cat"),
-//         (Value: 2, Locale: "en", Expected: "2 cats"),
-//         (Value: 3, Locale: "en", Expected: "3 cats"),
-//         (Value: 1, Locale: "en-AU", Expected: "a single cat"),
-//         (Value: 2, Locale: "en-AU", Expected: "2 cats"),
-//         (Value: 3, Locale: "en-AU", Expected: "3 cats"),
-//     };
-
-//     using (new FluentAssertions.Execution.AssertionScope())
-//     {
-
-//         foreach (var testCase in testCases)
-//         {
-//             var line = "[plural value=" + testCase.Value + " one=\"a single cat\" other=\"% cats\"/]";
-
-//             dialogue.LanguageCode = testCase.Locale;
-//             var markup = dialogue.ParseMarkup(line);
-//             markup.Text.Should().Be(testCase.Expected, $"{testCase.Value} in locale {testCase.Locale} should have the correct plural case");
-//         }
-//     }
-
-// }
