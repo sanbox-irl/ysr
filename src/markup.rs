@@ -274,7 +274,7 @@ pub enum MarkupValue {
     Bool(bool),
 }
 
-#[derive(Debug, thiserror::Error, Clone)]
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
 pub enum MarkupParseErr {
     #[error("attribute `{0}` was not closed")]
     AttributeNotClosed(String),
@@ -872,45 +872,227 @@ mod tests {
 
     #[test]
     fn unexpected_close_marker_throws() {
-        //     [Theory]
-        //     [InlineData("[a][/a][/b]")]
-        //     [InlineData("[/b]")]
-        //     [InlineData("[a][/][/b]")]
-        //     public void TestUnexpectedCloseMarkerThrows(string input) {
-        //         var parsingInvalidMarkup = new Action(() =>
-        //         {
-        //             var markup = dialogue.ParseMarkup(input);
-        //         });
+        assert_eq!(
+            "[a][/a][/b]".parse::<LineMarkup>().unwrap_err(),
+            MarkupParseErr::UnexpectedAttributeClose("b".to_string())
+        );
 
-        //         parsingInvalidMarkup.Should().Throw<MarkupParseException>();
-        //     }
+        assert_eq!(
+            "[/b]".parse::<LineMarkup>().unwrap_err(),
+            MarkupParseErr::UnexpectedAttributeClose("b".to_string())
+        );
+
+        assert_eq!(
+            "[a][/][/b]".parse::<LineMarkup>().unwrap_err(),
+            MarkupParseErr::UnexpectedAttributeClose("b".to_string())
+        );
     }
 
     #[test]
     fn markup_shortcut_property_parsing() {
-        //         var line = "[a=1]s[/a]";
-        //         var markup = dialogue.ParseMarkup(line);
-
-        //         // Should have a single attribute, "a", at position 0 and
-        //         // length 1
-        //         var attribute = markup.Attributes[0];
-        //         attribute.Name.Should().Be("a");
-        //         attribute.Position.Should().Be(0);
-        //         attribute.Length.Should().Be(1);
-
-        //         // Should have a single property on this attribute, "a". Value
-        //         // should be an integer, 1
-        //         var value = attribute.Properties["a"];
-
-        //         value.Type.Should().Be(MarkupValueType.Integer);
-        //         value.IntegerValue.Should().Be(1);
+        let line_markup = "[a=1]s[/a]".parse::<LineMarkup>().unwrap();
+        assert_eq!(line_markup.clean_text, "s");
+        assert_eq!(line_markup.attributes.len(), 1);
+        assert_eq!(line_markup.attributes[0].range, 0..1);
+        assert_eq!(line_markup.attributes[0].name, "a");
+        assert_eq!(line_markup.attributes[0].properties.len(), 1);
+        assert_eq!(line_markup.attributes[0].properties[0].name, "a");
+        assert_eq!(
+            line_markup.attributes[0].properties[0].value,
+            MarkupValue::I32(1)
+        );
     }
 
     #[test]
     fn markup_multiple_property() {
-        //         var line = "[a p1=1 p2=2]s[/a]";
-        //         var markup = dialogue.ParseMarkup(line);
+        let line = "[a p1=1 p2=2]s[/a]".parse::<LineMarkup>().unwrap();
+        let a_attrib = line.attributes.iter().find(|v| v.name == "a").unwrap();
+        assert_eq!(a_attrib.properties.len(), 2);
 
-        //         markup.Attributes[0].Name.Should().Be("a");
+        let p1 = &a_attrib.properties[0];
+        assert_eq!(p1.name, "p1");
+        assert_eq!(p1.value, MarkupValue::I32(1));
+
+        let p2 = &a_attrib.properties[1];
+        assert_eq!(p2.name, "p2");
+        assert_eq!(p2.value, MarkupValue::I32(2));
+    }
+
+    #[test]
+    fn markup_property_parsing() {
+        fn tester(input: &str, expected_value: MarkupValue) {
+            let line = input.parse::<LineMarkup>().unwrap();
+            let prop = &line.attributes[0].properties[0];
+            assert_eq!(prop.name, "p");
+            assert_eq!(prop.value, expected_value);
+        }
+
+        tester(
+            "[a p=\"string\"]s[/a]",
+            MarkupValue::String("string".to_owned()),
+        );
+        tester(
+            "[a p=\"str\"ing\"]s[/a]",
+            MarkupValue::String("string".to_owned()),
+        );
     }
 }
+
+// [Theory]
+// [InlineData(@"", MarkupValueType.String, @"str""ing")]
+// [InlineData("[a p=string]s[/a]", MarkupValueType.String, "string")]
+// [InlineData("[a p=42]s[/a]", MarkupValueType.Integer, "42")]
+// [InlineData("[a p=13.37]s[/a]", MarkupValueType.Float, "13.37")]
+// [InlineData("[a p=true]s[/a]", MarkupValueType.Bool, "True")]
+// [InlineData("[a p=false]s[/a]", MarkupValueType.Bool, "False")]
+// public void TestMarkupPropertyParsing(string input, MarkupValueType expectedType, string expectedValueAsString) {
+//     var markup = dialogue.ParseMarkup(input);
+
+//     var attribute = markup.Attributes[0];
+//     var propertyValue= attribute.Properties["p"];
+
+//     propertyValue.Type.Should().Be(expectedType);
+//     propertyValue.ToString().Should().Be(expectedValueAsString);
+// }
+
+// [Theory]
+// [InlineData("A [b]B [c]C[/c][/b] D")] // attributes can be closed
+// [InlineData("A [b]B [c]C[/b][/c] D")] // attributes can be closed out of order
+// [InlineData("A [b]B [c]C[/] D")] // "[/]" closes all open attributes
+// public void TestMultipleAttributes(string input) {
+//     var markup = dialogue.ParseMarkup(input);
+
+//     markup.Text.Should().Be("A B C D");
+
+//     markup.Attributes.Count.Should().Be(2);
+
+//     markup.Attributes[0].Name.Should().Be("b");
+//     markup.Attributes[0].Position.Should().Be(2);
+//     markup.Attributes[0].SourcePosition.Should().Be(2);
+//     markup.Attributes[0].Length.Should().Be(3);
+
+//     markup.Attributes[1].Name.Should().Be("c");
+//     markup.Attributes[1].Position.Should().Be(4);
+//     markup.Attributes[1].SourcePosition.Should().Be(7);
+//     markup.Attributes[1].Length.Should().Be(1);
+// }
+
+// [Fact]
+// public void TestSelfClosingAttributes() {
+//     var line = "A [a/] B";
+//     var markup = dialogue.ParseMarkup(line);
+
+//     markup.Text.Should().Be("A B");
+
+//     markup.Attributes.Should().ContainSingle();
+
+//     markup.Attributes[0].Name.Should().Be("a");
+//     markup.Attributes[0].Properties.Count.Should().Be(0);
+//     markup.Attributes[0].Position.Should().Be(2);
+//     markup.Attributes[0].Length.Should().Be(0);
+// }
+
+// [Theory]
+// [InlineData("A [a/] B", "A B")]
+// [InlineData("A [a trimwhitespace=true/] B", "A B")]
+// [InlineData("A [a trimwhitespace=false/] B", "A  B")]
+// [InlineData("A [nomarkup/] B", "A  B")]
+// [InlineData("A [nomarkup trimwhitespace=false/] B", "A  B")]
+// [InlineData("A [nomarkup trimwhitespace=true/] B", "A B")]
+// public void TestAttributesMayTrimTrailingWhitespace(string input, string expectedText) {
+//     var markup = dialogue.ParseMarkup(input);
+
+//     markup.Text.Should().Be(expectedText);
+// }
+
+// [Theory]
+// // character attribute can be implicit
+// [InlineData("Mae: Wow!")]
+// // character attribute can also be explicit
+// [InlineData("[character name=\"Mae\"]Mae: [/character]Wow!")]
+// public void TestImplicitCharacterAttributeParsing(string input) {
+//     var markup = dialogue.ParseMarkup(input);
+
+//     markup.Text.Should().Be("Mae: Wow!");
+//     markup.Attributes.Should().ContainSingle();
+
+//     markup.Attributes[0].Name.Should().Be("character");
+//     markup.Attributes[0].Position.Should().Be(0);
+//     markup.Attributes[0].Length.Should().Be(5);
+
+//     markup.Attributes[0].Properties.Count.Should().Be(1);
+//     markup.Attributes[0].Properties["name"].StringValue.Should().Be("Mae");
+// }
+
+// [Fact]
+// public void TestNoMarkupModeParsing() {
+//     var line = "S [a]S[/a] [nomarkup][a]S;][/a][/nomarkup]";
+//     var markup = dialogue.ParseMarkup(line);
+
+//     markup.Text.Should().Be("S S [a]S;][/a]");
+
+//     markup.Attributes.Count.Should().Be(2);
+
+//     markup.Attributes[0].Name.Should().Be("a");
+//     markup.Attributes[0].Position.Should().Be(2);
+//     markup.Attributes[0].Length.Should().Be(1);
+
+//     markup.Attributes[1].Name.Should().Be("nomarkup");
+//     markup.Attributes[1].Position.Should().Be(4);
+//     markup.Attributes[1].Length.Should().Be(10);
+// }
+
+// [Fact]
+// public void TestMarkupEscaping() {
+//     var line = @"[a]hello \[b\]hello\[/b\][/a]";
+//     var markup = dialogue.ParseMarkup(line);
+
+//     markup.Text.Should().Be("hello [b]hello[/b]");
+//     markup.Attributes.Should().ContainSingle();
+//     markup.Attributes[0].Name.Should().Be("a");
+//     markup.Attributes[0].Position.Should().Be(0);
+//     markup.Attributes[0].Length.Should().Be(18);
+// }
+
+// [Fact]
+// public void TestNumericProperties() {
+//     var line = @"[select value=1 1=one 2=two 3=three /]";
+//     var markup = dialogue.ParseMarkup(line);
+
+//     markup.Attributes.Should().ContainSingle();
+//     markup.Attributes[0].Name.Should().Be("select");
+//     markup.Attributes[0].Properties.Count.Should().Be(4);
+//     markup.Attributes[0].Properties["value"].IntegerValue.Should().Be(1);
+//     markup.Attributes[0].Properties["1"].StringValue.Should().Be("one");
+//     markup.Attributes[0].Properties["2"].StringValue.Should().Be("two");
+//     markup.Attributes[0].Properties["3"].StringValue.Should().Be("three");
+
+//     markup.Text.Should().Be("one");
+// }
+
+// [Fact]
+// public void TestNumberPluralisation() {
+
+//     var testCases = new[] {
+//         (Value: 1, Locale: "en", Expected: "a single cat"),
+//         (Value: 2, Locale: "en", Expected: "2 cats"),
+//         (Value: 3, Locale: "en", Expected: "3 cats"),
+//         (Value: 1, Locale: "en-AU", Expected: "a single cat"),
+//         (Value: 2, Locale: "en-AU", Expected: "2 cats"),
+//         (Value: 3, Locale: "en-AU", Expected: "3 cats"),
+//     };
+
+//     using (new FluentAssertions.Execution.AssertionScope())
+//     {
+
+//         foreach (var testCase in testCases)
+//         {
+//             var line = "[plural value=" + testCase.Value + " one=\"a single cat\" other=\"% cats\"/]";
+
+//             dialogue.LanguageCode = testCase.Locale;
+//             var markup = dialogue.ParseMarkup(line);
+//             markup.Text.Should().Be(testCase.Expected, $"{testCase.Value} in locale {testCase.Locale} should have the correct plural case");
+//         }
+//     }
+
+// }
