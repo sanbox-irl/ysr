@@ -12,13 +12,14 @@
 mod byte_code;
 mod command_handler;
 mod line_handler;
+mod markup;
 mod proto;
 mod storage;
-mod markup;
 
 pub use byte_code::{YarnProgram, YarnProgramError};
 pub use command_handler::*;
 pub use line_handler::LineHandler;
+pub use markup::*;
 pub use storage::YarnStorage;
 
 use byte_code::Instruction;

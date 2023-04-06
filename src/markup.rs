@@ -6,10 +6,9 @@ pub struct LineMarkup {
     pub attributes: Vec<Attribute>,
 }
 
-impl std::str::FromStr for LineMarkup {
-    type Err = MarkupParseErr;
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
+impl LineMarkup {
+    /// Creates a new `LineMarkup` from a markup string.
+    pub fn new(input: &str) -> Result<Self, MarkupParseErr> {
         let mut attributes = vec![];
         let mut open: Vec<Attribute> = vec![];
         let mut stream = TokenStream(input.char_indices().peekable(), input);
@@ -441,20 +440,17 @@ mod tests {
 
     #[test]
     fn passthrough() {
-        assert!("this has no markup in it"
-            .parse::<LineMarkup>()
+        assert!(LineMarkup::new("this has no markup in it")
             .unwrap()
             .attributes
             .is_empty());
-        assert!("    ".parse::<LineMarkup>().unwrap().attributes.is_empty());
-        assert!("-----".parse::<LineMarkup>().unwrap().attributes.is_empty());
+        assert!(LineMarkup::new("    ").unwrap().attributes.is_empty());
+        assert!(LineMarkup::new("-----").unwrap().attributes.is_empty());
     }
 
     #[test]
     fn character_markup() {
-        let output = "Narrator: this is a simple line"
-            .parse::<LineMarkup>()
-            .unwrap();
+        let output = LineMarkup::new("Narrator: this is a simple line").unwrap();
         assert_eq!(output.clean_text, "Narrator: this is a simple line");
 
         let attributes = output.attributes;
@@ -472,9 +468,7 @@ mod tests {
 
     #[test]
     fn character_ws() {
-        let output = "Narrator:          this is a simple line"
-            .parse::<LineMarkup>()
-            .unwrap();
+        let output = LineMarkup::new("Narrator:          this is a simple line").unwrap();
         assert_eq!(
             output.clean_text,
             "Narrator:          this is a simple line"
@@ -495,9 +489,7 @@ mod tests {
 
     #[test]
     fn character_no_ws() {
-        let output = "Narrator:this is a simple line"
-            .parse::<LineMarkup>()
-            .unwrap();
+        let output = LineMarkup::new("Narrator:this is a simple line").unwrap();
         assert_eq!(output.clean_text, "Narrator:this is a simple line");
         let attributes = output.attributes;
         assert_eq!(attributes.len(), 1);
@@ -514,14 +506,15 @@ mod tests {
 
     #[test]
     fn escaped_sequences() {
-        assert!(
-            r#"Here's some brackets \[ \]"#.parse::<LineMarkup>().unwrap().attributes.is_empty()
-        );
+        assert!(LineMarkup::new(r#"Here's some brackets \[ \]"#)
+            .unwrap()
+            .attributes
+            .is_empty());
     }
 
     #[test]
     fn basic_attributes() {
-        let output = "Here's a [wave]guy[/wave]".parse::<LineMarkup>().unwrap();
+        let output = LineMarkup::new("Here's a [wave]guy[/wave]").unwrap();
         assert_eq!(output.clean_text, "Here's a guy");
 
         let attributes = output.attributes;
@@ -535,10 +528,10 @@ mod tests {
 
     #[test]
     fn basic_two() {
-        let output =
-            "Here's a [wave] guy[/wave] [other_guy] and there goes another guy[/other_guy]"
-                .parse::<LineMarkup>()
-                .unwrap();
+        let output = LineMarkup::new(
+            "Here's a [wave] guy[/wave] [other_guy] and there goes another guy[/other_guy]",
+        )
+        .unwrap();
         assert_eq!(
             output.clean_text,
             "Here's a  guy  and there goes another guy"
@@ -560,9 +553,7 @@ mod tests {
 
     #[test]
     fn shorthand_attribute() {
-        let output = "Here's a [wave=3] guy[/wave]"
-            .parse::<LineMarkup>()
-            .unwrap();
+        let output = LineMarkup::new("Here's a [wave=3] guy[/wave]").unwrap();
         assert_eq!(output.clean_text, "Here's a  guy");
         let attributes = output.attributes;
 
@@ -576,9 +567,7 @@ mod tests {
 
     #[test]
     fn shorthand_attribute_f32() {
-        let output = "Here's a [wave=3.1] guy[/wave]"
-            .parse::<LineMarkup>()
-            .unwrap();
+        let output = LineMarkup::new("Here's a [wave=3.1] guy[/wave]").unwrap();
         assert_eq!(output.clean_text, "Here's a  guy");
         let attributes = output.attributes;
 
@@ -592,9 +581,7 @@ mod tests {
 
     #[test]
     fn shorthand_attribute_single() {
-        let output = "Here's a [wave=yolo] guy[/wave]"
-            .parse::<LineMarkup>()
-            .unwrap();
+        let output = LineMarkup::new("Here's a [wave=yolo] guy[/wave]").unwrap();
         assert_eq!(output.clean_text, "Here's a  guy");
         let attributes = output.attributes;
 
@@ -611,9 +598,7 @@ mod tests {
 
     #[test]
     fn shorthand_attribute_quotes() {
-        let output = "Here's a [wave=\"yooloo there\"] guy[/wave]"
-            .parse::<LineMarkup>()
-            .unwrap();
+        let output = LineMarkup::new("Here's a [wave=\"yooloo there\"] guy[/wave]").unwrap();
         assert_eq!(output.clean_text, "Here's a  guy");
         let attributes = output.attributes;
 
@@ -630,9 +615,8 @@ mod tests {
 
     #[test]
     fn close_all() {
-        let output = "Here's a [wave=\"yooloo there\"][okay=3][another_one]guy[/]"
-            .parse::<LineMarkup>()
-            .unwrap();
+        let output =
+            LineMarkup::new("Here's a [wave=\"yooloo there\"][okay=3][another_one]guy[/]").unwrap();
         assert_eq!(output.clean_text, "Here's a guy");
         assert_eq!(output.attributes.len(), 3);
         for attribute in output.attributes {
@@ -642,9 +626,7 @@ mod tests {
 
     #[test]
     fn self_closing() {
-        let output = "Here's a [screen_shake/] guy."
-            .parse::<LineMarkup>()
-            .unwrap();
+        let output = LineMarkup::new("Here's a [screen_shake/] guy.").unwrap();
         assert_eq!(output.clean_text, "Here's a guy.");
         assert_eq!(output.attributes.len(), 1);
 
@@ -657,9 +639,7 @@ mod tests {
 
     #[test]
     fn self_closing_prop() {
-        let output = "Here's a [screen_shake value=0.9/] guy."
-            .parse::<LineMarkup>()
-            .unwrap();
+        let output = LineMarkup::new("Here's a [screen_shake value=0.9/] guy.").unwrap();
         assert_eq!(output.clean_text, "Here's a guy.");
         assert_eq!(output.attributes.len(), 1);
 
@@ -677,9 +657,7 @@ mod tests {
 
     #[test]
     fn self_closing_prop_quote() {
-        let output = "Here's a [screen_shake value=\"0.9\"/] guy."
-            .parse::<LineMarkup>()
-            .unwrap();
+        let output = LineMarkup::new("Here's a [screen_shake value=\"0.9\"/] guy.").unwrap();
         assert_eq!(output.clean_text, "Here's a guy.");
         assert_eq!(output.attributes.len(), 1);
 
@@ -697,9 +675,7 @@ mod tests {
 
     #[test]
     fn self_shorthand_closing_prop_quote() {
-        let output = "Here's a [screen_shake=\"0.9\"/] guy."
-            .parse::<LineMarkup>()
-            .unwrap();
+        let output = LineMarkup::new("Here's a [screen_shake=\"0.9\"/] guy.").unwrap();
         assert_eq!(output.clean_text, "Here's a guy.");
         assert_eq!(output.attributes.len(), 1);
 
@@ -717,9 +693,8 @@ mod tests {
 
     #[test]
     fn no_markup() {
-        let output = "Here's a [nomarkup][screen_shake=\"0.9\"/] guy.[/nomarkup]"
-            .parse::<LineMarkup>()
-            .unwrap();
+        let output =
+            LineMarkup::new("Here's a [nomarkup][screen_shake=\"0.9\"/] guy.[/nomarkup]").unwrap();
         assert_eq!(output.clean_text, "Here's a [screen_shake=\"0.9\"/] guy.");
         assert_eq!(output.attributes.len(), 1);
 
@@ -732,7 +707,7 @@ mod tests {
     /// ----- The following tests are based on the Yarn Spinner repo.
     #[test]
     fn markup_parsing() {
-        let line_markup = "A [b]B[/b]".parse::<LineMarkup>().unwrap();
+        let line_markup = LineMarkup::new("A [b]B[/b]").unwrap();
         assert_eq!(line_markup.clean_text, "A B");
         assert_eq!(line_markup.attributes.len(), 1);
         assert_eq!(line_markup.attributes[0].name, "b");
@@ -741,7 +716,7 @@ mod tests {
 
     #[test]
     fn overlapping_attributes() {
-        let line_markup = "[a][b][c]X[/b][/a]X[/c]".parse::<LineMarkup>().unwrap();
+        let line_markup = LineMarkup::new("[a][b][c]X[/b][/a]X[/c]").unwrap();
         assert_eq!(line_markup.clean_text, "XX");
         assert_eq!(line_markup.attributes.len(), 3);
 
@@ -753,7 +728,7 @@ mod tests {
 
     #[test]
     fn text_extraction() {
-        let line_markup = "A [b]B [c]C[/c][/b]".parse::<LineMarkup>().unwrap();
+        let line_markup = LineMarkup::new("A [b]B [c]C[/c][/b]").unwrap();
         assert_eq!(line_markup.clean_text, "A B C");
         assert_eq!(line_markup.attributes.len(), 2);
 
@@ -779,7 +754,7 @@ mod tests {
 
     #[test]
     fn finding_attributes() {
-        let line_markup = "A [b]B[/b] [b]C[/b]".parse::<LineMarkup>().unwrap();
+        let line_markup = LineMarkup::new("A [b]B[/b] [b]C[/b]").unwrap();
         assert_eq!(line_markup.clean_text, "A B C");
         let attribute = line_markup
             .attributes
@@ -796,7 +771,7 @@ mod tests {
     #[test]
     fn multibyte_character_parsing() {
         fn quick_check(input: &str, clean_txt: &str, attribute_name: &str, rng: Range<usize>) {
-            let line_markup = input.parse::<LineMarkup>().unwrap();
+            let line_markup = LineMarkup::new(input).unwrap();
             assert_eq!(line_markup.clean_text, clean_txt);
             assert_eq!(line_markup.attributes.len(), 1);
             assert_eq!(line_markup.attributes[0].range, rng);
@@ -874,24 +849,24 @@ mod tests {
     #[test]
     fn unexpected_close_marker_throws() {
         assert_eq!(
-            "[a][/a][/b]".parse::<LineMarkup>().unwrap_err(),
+            LineMarkup::new("[a][/a][/b]").unwrap_err(),
             MarkupParseErr::UnexpectedAttributeClose("b".to_string())
         );
 
         assert_eq!(
-            "[/b]".parse::<LineMarkup>().unwrap_err(),
+            LineMarkup::new("[/b]").unwrap_err(),
             MarkupParseErr::UnexpectedAttributeClose("b".to_string())
         );
 
         assert_eq!(
-            "[a][/][/b]".parse::<LineMarkup>().unwrap_err(),
+            LineMarkup::new("[a][/][/b]").unwrap_err(),
             MarkupParseErr::UnexpectedAttributeClose("b".to_string())
         );
     }
 
     #[test]
     fn markup_shortcut_property_parsing() {
-        let line_markup = "[a=1]s[/a]".parse::<LineMarkup>().unwrap();
+        let line_markup = LineMarkup::new("[a=1]s[/a]").unwrap();
         assert_eq!(line_markup.clean_text, "s");
         assert_eq!(line_markup.attributes.len(), 1);
         assert_eq!(line_markup.attributes[0].range, 0..1);
@@ -905,7 +880,7 @@ mod tests {
 
     #[test]
     fn markup_multiple_property() {
-        let line = "[a p1=1 p2=2]s[/a]".parse::<LineMarkup>().unwrap();
+        let line = LineMarkup::new("[a p1=1 p2=2]s[/a]").unwrap();
         let a_attrib = line.attributes.iter().find(|v| v.name == "a").unwrap();
         assert_eq!(a_attrib.properties.len(), 2);
 
@@ -916,7 +891,7 @@ mod tests {
     #[test]
     fn markup_property_parsing() {
         fn tester(input: &str, expected_value: MarkupValue) {
-            let line = input.parse::<LineMarkup>().unwrap();
+            let line = LineMarkup::new(input).unwrap();
 
             assert_eq!(
                 *line.attributes[0].properties.get("p").unwrap(),
@@ -945,7 +920,7 @@ mod tests {
     #[test]
     fn test_multiple_attributes() {
         fn test(input: &str) {
-            let line = input.parse::<LineMarkup>().unwrap();
+            let line = LineMarkup::new(input).unwrap();
             assert_eq!(line.clean_text, "A B C D");
 
             assert_eq!(line.attributes.len(), 2);
@@ -966,7 +941,7 @@ mod tests {
 
     #[test]
     fn self_closing_attributes() {
-        let line = "A [a/] B".parse::<LineMarkup>().unwrap();
+        let line = LineMarkup::new("A [a/] B").unwrap();
         assert_eq!(line.clean_text, "A B");
         assert_eq!(line.attributes.len(), 1);
 
@@ -978,35 +953,31 @@ mod tests {
 
     #[test]
     fn trailing_whitespace() {
-        assert_eq!("A [a/] B".parse::<LineMarkup>().unwrap().clean_text, "A B");
+        assert_eq!(LineMarkup::new("A [a/] B").unwrap().clean_text, "A B");
         assert_eq!(
-            "A [a trimwhitespace=true/] B"
-                .parse::<LineMarkup>()
+            LineMarkup::new("A [a trimwhitespace=true/] B")
                 .unwrap()
                 .clean_text,
             "A B"
         );
         assert_eq!(
-            "A [a trimwhitespace=false/] B"
-                .parse::<LineMarkup>()
+            LineMarkup::new("A [a trimwhitespace=false/] B")
                 .unwrap()
                 .clean_text,
             "A  B"
         );
         // assert_eq!(
-        //     "A [nomarkup/] B".parse::<LineMarkup>().unwrap().clean_text,
+        //     LineMarkup::new("A [nomarkup/] B").unwrap().clean_text,
         //     "A  B"
         // );
         assert_eq!(
-            "A [nomarkup trimwhitespace=false/] B"
-                .parse::<LineMarkup>()
+            LineMarkup::new("A [nomarkup trimwhitespace=false/] B")
                 .unwrap()
                 .clean_text,
             "A  B"
         );
         assert_eq!(
-            "A [nomarkup trimwhitespace=true/] B"
-                .parse::<LineMarkup>()
+            LineMarkup::new("A [nomarkup trimwhitespace=true/] B")
                 .unwrap()
                 .clean_text,
             "A B"
@@ -1016,7 +987,7 @@ mod tests {
     #[test]
     fn implicit_character_parsing() {
         fn test(input: &str) {
-            let line = input.parse::<LineMarkup>().unwrap();
+            let line = LineMarkup::new(input).unwrap();
             // assert_eq!(line.clean_text, "Mae: Wow!");
             assert_eq!(line.attributes.len(), 1);
 
@@ -1037,9 +1008,7 @@ mod tests {
 
     #[test]
     fn no_markup_mode_parsing() {
-        let line = "S [a]S[/a] [nomarkup][a]S;][/a][/nomarkup]"
-            .parse::<LineMarkup>()
-            .unwrap();
+        let line = LineMarkup::new("S [a]S[/a] [nomarkup][a]S;][/a][/nomarkup]").unwrap();
 
         assert_eq!(line.clean_text, "S S [a]S;][/a]");
 
@@ -1056,7 +1025,7 @@ mod tests {
 
     #[test]
     fn escaping() {
-        let line = r#"[a]hello \[b\]hello\[/b\][/a]"#.parse::<LineMarkup>().unwrap();
+        let line = LineMarkup::new(r#"[a]hello \[b\]hello\[/b\][/a]"#).unwrap();
         assert_eq!(line.clean_text, "hello [b]hello[/b]");
         assert_eq!(line.attributes.len(), 1);
 
@@ -1067,9 +1036,7 @@ mod tests {
 
     #[test]
     fn numeric_properties() {
-        let line = "[select value=1 1=one 2=two 3=three /]"
-            .parse::<LineMarkup>()
-            .unwrap();
+        let line = LineMarkup::new("[select value=1 1=one 2=two 3=three /]").unwrap();
 
         assert_eq!(line.attributes.len(), 1);
         let atty = &line.attributes[0];
