@@ -11,6 +11,7 @@ const DOUBLE_QUOTATION: char = '"';
 const UNDERSCORE: char = '_';
 
 const CHARACTER: &str = "character";
+const TRIM_WHITESPACE: &str = "trimwhitespace";
 const NO_MARKUP: &str = "nomarkup";
 const NO_MARKUP_END: &str = "[/nomarkup]";
 
@@ -24,7 +25,7 @@ impl LineMarkup {
     /// You can have text replacement handlers, which change what gets placed into the clean text.
     pub fn new(
         input: &str,
-        replacement_marker_handlers: impl FnMut(),
+        mut replacement_marker_handlers: impl FnMut(&mut String, &Attribute),
     ) -> Result<Self, MarkupParseErr> {
         let mut attributes = vec![];
         let mut open: Vec<Attribute> = vec![];
@@ -54,6 +55,7 @@ impl LineMarkup {
                         for mut attribute in open.drain(..) {
                             attribute.range.end = clean_text.chars().count();
 
+                            replacement_marker_handlers(&mut clean_text, &attribute);
                             attributes.push(attribute);
                         }
 
@@ -79,6 +81,7 @@ impl LineMarkup {
                                 let mut attribute = open.remove(pos);
                                 attribute.range.end = clean_text.chars().count();
 
+                                replacement_marker_handlers(&mut clean_text, &attribute);
                                 attributes.push(attribute);
 
                                 continue;
@@ -171,11 +174,13 @@ impl LineMarkup {
                         attribute.range.end = attribute.range.start;
 
                         let trim_whitespace =
-                            if let Some(tw_value) = attribute.properties.get("trimwhitespace") {
+                            if let Some(tw_value) = attribute.properties.get(TRIM_WHITESPACE) {
                                 matches!(tw_value, MarkupValue::Bool(true))
                             } else {
                                 true
                             };
+
+                        replacement_marker_handlers(&mut clean_text, &attribute);
                         attributes.push(attribute);
 
                         if trim_whitespace {
@@ -207,6 +212,7 @@ impl LineMarkup {
 
                             if found_end {
                                 attribute.range.end = clean_text.chars().count();
+                                replacement_marker_handlers(&mut clean_text, &attribute);
                                 attributes.push(attribute);
                             } else {
                                 return Err(MarkupParseErr::AttributeNotClosed(attribute.name));
@@ -252,13 +258,15 @@ impl LineMarkup {
                         clean_text.push_str(stream.get(ws_start..ws_end).unwrap());
 
                         // and toss it out there!
-                        attributes.push(Attribute {
+                        let attribute = Attribute {
                             name: CHARACTER.to_string(),
                             range: 0..clean_text.chars().count(),
                             properties: [("name".to_string(), MarkupValue::String(value))]
                                 .into_iter()
                                 .collect(),
-                        });
+                        };
+                        replacement_marker_handlers(&mut clean_text, &attribute);
+                        attributes.push(attribute);
 
                         assigned_character = true;
                     }
@@ -521,7 +529,7 @@ mod tests {
 
     impl LineMarkup {
         fn test(input: &str) -> Result<Self, MarkupParseErr> {
-            Self::new(input, || {})
+            Self::new(input, |_, _| {})
         }
     }
 
