@@ -17,7 +17,7 @@ position: -65,306
         << set $ROLLED to dice(10)>>
         The value of our rolled variable is {$ROLLED}. #line:0307fc5 
         << jump opts >>
-    -> Do you have any other [select value={$noun} jim="character" bob ="actors"] to show me? I know I need $APPLES to be true for this. <<if $APPLES>> #line:0c5ed9a 
+    -> Do you have any other [select value={$noun} jim="character" bob="actors" /] to show me? <<if $APPLES>> #line:0c5ed9a 
         <<jump end_of_line>>
 ===
 title: end_of_line

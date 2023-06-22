@@ -4,5 +4,5 @@ line:029bafb,Character: Here are options.,/Users/jjspira/Documents/Rust/yarn-spi
 line:037f467,"Great [wave]options[/wave], but let's [screen_shake/] stop.",/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,opts,14
 line:08b2ff7,Give me $APPLES true?,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,opts,15
 line:0307fc5,The value of our rolled variable is {0}.,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,opts,18
-line:0c5ed9a,"Do you have any other [select value={0} jim=""character"" bob =""actors""] to show me? I know I need $APPLES to be true for this.",/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,opts,20
+line:0c5ed9a,"Do you have any other [select value={0} jim=""character"" bob=""actors"" /] to show me?",/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,opts,20
 line:061b2e2,Fancy them apples!,/Users/jjspira/Documents/Rust/yarn-spinner/test_input/test.yarn,end_of_line,26

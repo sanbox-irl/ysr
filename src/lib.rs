@@ -159,17 +159,23 @@ impl YarnRunner {
                     return Ok(Some(ExecutionOutput::Command(command)));
                 }
                 Instruction::AddOption(option_data) => {
-                    let condition_passed = if option_data.has_condition {
-                        Some(state.stack.pop().expect("must handle").try_to_bool()?)
-                    } else {
-                        None
-                    };
-
                     let mut substitutions = vec![];
 
                     for _ in 0..option_data.line.substitution_count {
                         substitutions.push(state.stack.pop().expect("handle errr").to_string());
                     }
+
+                    let condition_passed = if option_data.has_condition {
+                        let output = state.stack.pop().expect("malformed stack");
+                        match output.try_to_bool() {
+                            Ok(v) => Some(v),
+                            Err(e) => {
+                                return Err(ExecutionError::ConditionOnNonBool(e));
+                            }
+                        }
+                    } else {
+                        None
+                    };
 
                     state.options.push(YarnOption {
                         line: YarnLine {
@@ -458,6 +464,9 @@ pub enum ExecutionError {
 
     #[error(transparent)]
     NodeDoesNotExist(#[from] NodeDoesNotExist),
+
+    #[error("condition requires variable to be bool, but it is not: {0}")]
+    ConditionOnNonBool(ConversionError),
 
     #[error(transparent)]
     ConversionError(#[from] ConversionError),
