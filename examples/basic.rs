@@ -1,4 +1,4 @@
-use yarn_spinner::{ExecutionOutput, Localization, Markup, Program, Runner, Storage};
+use ysr::{ExecutionOutput, Localization, Markup, Program, Runner, Storage};
 
 const PROGRAM_BYTES: &[u8] = include_bytes!("../test_input/test.yarnc");
 const LOCAL_BYTES: &str = include_str!("../test_input/test-Lines.csv");
@@ -46,9 +46,7 @@ fn main() {
             ExecutionOutput::Command(cmd) => todo!(),
             ExecutionOutput::Function(function) => {
                 // we can do this because we know that we've implemented the default functions
-                let output = yarn_spinner::process_built_in_function(&function)
-                    .unwrap()
-                    .unwrap();
+                let output = ysr::process_built_in_function(&function).unwrap().unwrap();
 
                 yarn_runner.return_function(output).unwrap();
             }
