@@ -1,105 +1,105 @@
 use std::collections::HashMap;
 
-use crate::{type_names, YarnValue};
+use crate::{type_names, Value};
 
 /// This is the compiled output of the `ysc` compiler, lightly processed by us.
-/// Fundamentally, this is the bytecode stream of a yarn program, which the `YarnRunner`
+/// Fundamentally, this is the bytecode stream of a yarn program, which the `Runner`
 /// can take and actually execute.
 #[derive(Debug, Clone)]
-pub struct YarnProgram {
+pub struct Program {
     pub(crate) name: String,
     pub(crate) nodes: HashMap<String, Node>,
-    pub(crate) initial_values: HashMap<String, YarnValue>,
+    pub(crate) initial_values: HashMap<String, Value>,
 }
 
-impl YarnProgram {
+impl Program {
     /// Parses in a bytecode stream. This should be the bytecode outputted by `ysc`.
-    pub fn new(program: &[u8]) -> Result<Self, YarnProgramError> {
+    pub fn new(program: &[u8]) -> Result<Self, ProgramError> {
         // these are all very annoying traits to have outside this scope, so we leave them here.
         use crate::proto::{instruction, operand::Value, Program};
 
         struct OperandHandler<T>(T, usize);
 
         impl<T: Iterator<Item = Value>> OperandHandler<T> {
-            pub fn take_str(&mut self) -> Result<String, YarnProgramError> {
+            pub fn take_str(&mut self) -> Result<String, ProgramError> {
                 const EXPECTED: &str = type_names::STR;
 
                 match self.0.next() {
                     Some(Value::String(str)) => Ok(str),
-                    Some(Value::Bool(_)) => Err(YarnProgramError::UnexpectedOperandKind(
-                        UnexpectedOperandKind {
+                    Some(Value::Bool(_)) => {
+                        Err(ProgramError::UnexpectedOperandKind(UnexpectedOperandKind {
                             idx: self.1,
                             expected: EXPECTED,
                             found: type_names::BOOL,
-                        },
-                    )),
-                    Some(Value::Float(_)) => Err(YarnProgramError::UnexpectedOperandKind(
-                        UnexpectedOperandKind {
+                        }))
+                    }
+                    Some(Value::Float(_)) => {
+                        Err(ProgramError::UnexpectedOperandKind(UnexpectedOperandKind {
                             idx: self.1,
                             expected: EXPECTED,
                             found: type_names::F32,
-                        },
-                    )),
-                    None => Err(YarnProgramError::MissingOperand {
+                        }))
+                    }
+                    None => Err(ProgramError::MissingOperand {
                         idx: self.1,
                         expected: EXPECTED,
                     }),
                 }
             }
 
-            fn take_f32(&mut self) -> Result<f32, YarnProgramError> {
+            fn take_f32(&mut self) -> Result<f32, ProgramError> {
                 const EXPECTED: &str = type_names::F32;
 
                 match self.0.next() {
                     Some(Value::Float(v)) => Ok(v),
-                    Some(Value::String(_)) => Err(YarnProgramError::UnexpectedOperandKind(
-                        UnexpectedOperandKind {
+                    Some(Value::String(_)) => {
+                        Err(ProgramError::UnexpectedOperandKind(UnexpectedOperandKind {
                             idx: self.1,
                             expected: EXPECTED,
                             found: type_names::STR,
-                        },
-                    )),
-                    Some(Value::Bool(_)) => Err(YarnProgramError::UnexpectedOperandKind(
-                        UnexpectedOperandKind {
+                        }))
+                    }
+                    Some(Value::Bool(_)) => {
+                        Err(ProgramError::UnexpectedOperandKind(UnexpectedOperandKind {
                             idx: self.1,
                             expected: EXPECTED,
                             found: type_names::BOOL,
-                        },
-                    )),
-                    None => Err(YarnProgramError::MissingOperand {
+                        }))
+                    }
+                    None => Err(ProgramError::MissingOperand {
                         idx: self.1,
                         expected: EXPECTED,
                     }),
                 }
             }
 
-            fn take_bool(&mut self) -> Result<bool, YarnProgramError> {
+            fn take_bool(&mut self) -> Result<bool, ProgramError> {
                 const EXPECTED: &str = type_names::BOOL;
 
                 match self.0.next() {
                     Some(Value::Bool(v)) => Ok(v),
-                    Some(Value::String(_)) => Err(YarnProgramError::UnexpectedOperandKind(
-                        UnexpectedOperandKind {
+                    Some(Value::String(_)) => {
+                        Err(ProgramError::UnexpectedOperandKind(UnexpectedOperandKind {
                             idx: self.1,
                             expected: EXPECTED,
                             found: type_names::STR,
-                        },
-                    )),
-                    Some(Value::Float(_)) => Err(YarnProgramError::UnexpectedOperandKind(
-                        UnexpectedOperandKind {
+                        }))
+                    }
+                    Some(Value::Float(_)) => {
+                        Err(ProgramError::UnexpectedOperandKind(UnexpectedOperandKind {
                             idx: self.1,
                             expected: EXPECTED,
                             found: type_names::F32,
-                        },
-                    )),
-                    None => Err(YarnProgramError::MissingOperand {
+                        }))
+                    }
+                    None => Err(ProgramError::MissingOperand {
                         idx: self.1,
                         expected: EXPECTED,
                     }),
                 }
             }
 
-            fn take_floaty_usize(&mut self) -> Result<usize, YarnProgramError> {
+            fn take_floaty_usize(&mut self) -> Result<usize, ProgramError> {
                 self.take_f32().map(|v| v as usize)
             }
         }
@@ -108,7 +108,7 @@ impl YarnProgram {
         let program = match <Program as prost::Message>::decode(program) {
             Ok(v) => v,
             Err(e) => {
-                return Err(YarnProgramError::DecodeErr(e));
+                return Err(ProgramError::DecodeErr(e));
             }
         };
 
@@ -119,7 +119,7 @@ impl YarnProgram {
             let mut instructions = vec![];
             for (i, raw_instruction) in node.instructions.into_iter().enumerate() {
                 let Some(opcode) = instruction::OpCode::from_i32(raw_instruction.opcode) else {
-                    return Err(YarnProgramError::UnexpectedOpCode { found: raw_instruction.opcode, idx: i });
+                    return Err(ProgramError::UnexpectedOpCode { found: raw_instruction.opcode, idx: i });
                 };
                 let mut operands = OperandHandler(
                     raw_instruction
@@ -163,7 +163,7 @@ impl YarnProgram {
                     instruction::OpCode::PushFloat => Instruction::PushFloat(operands.take_f32()?),
                     instruction::OpCode::PushBool => Instruction::PushBool(operands.take_bool()?),
                     instruction::OpCode::PushNull => {
-                        return Err(YarnProgramError::UnsupportedOpCode(raw_instruction.opcode));
+                        return Err(ProgramError::UnsupportedOpCode(raw_instruction.opcode));
                     }
                     instruction::OpCode::JumpIfFalse => {
                         Instruction::JumpIfFalse(operands.take_str()?)
@@ -205,9 +205,9 @@ impl YarnProgram {
             .filter_map(|(k, v)| {
                 v.value.map(|v| {
                     let value = match v {
-                        Value::String(v) => crate::YarnValue::Str(v),
-                        Value::Bool(v) => crate::YarnValue::Bool(v),
-                        Value::Float(v) => crate::YarnValue::F32(v),
+                        Value::String(v) => crate::Value::Str(v),
+                        Value::Bool(v) => crate::Value::Bool(v),
+                        Value::Float(v) => crate::Value::F32(v),
                     };
 
                     (k, value)
@@ -228,7 +228,7 @@ impl YarnProgram {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum YarnProgramError {
+pub enum ProgramError {
     #[error("unexpected opcode `{found}` at index `{idx}`")]
     // it's an i32 since the C# emits i32s, and if it emits a negative number, it'd be good to know about that
     UnexpectedOpCode { found: i32, idx: usize },
@@ -305,17 +305,3 @@ pub(crate) struct OptionData {
     pub(crate) destination: String,
     pub(crate) has_condition: bool,
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-
-//     const TEST_PROGRAM: &[u8] = include_bytes!("../test_input/test.yarnc");
-
-//     #[test]
-//     fn test() {
-//         let yarn_runner = YarnProgram::new(TEST_PROGRAM);
-
-//         panic!()
-//     }
-// }

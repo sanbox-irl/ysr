@@ -16,16 +16,16 @@ const NO_MARKUP: &str = "nomarkup";
 const NO_MARKUP_END: &str = "[/nomarkup]";
 
 #[derive(Debug)]
-pub struct LineMarkup {
+pub struct Markup {
     pub clean_text: String,
     pub attributes: Vec<Attribute>,
 }
 
-impl LineMarkup {
+impl Markup {
     /// Markups the string using builtin text replacement markers (`select`, `plural`, and `ordinal`).
     /// If you want more control or to add your own, see [new_raw](Self::new_raw).
     pub fn new(input: &str) -> Result<Self, MarkupParseErr> {
-        Self::new_raw(input, built_in_replacement_markers)
+        Self::new_raw(input, Self::built_in_replacement_markers)
     }
 
     /// This lets you handle all text replacement yourself, without any builtins or only builtins. You can make
@@ -305,6 +305,73 @@ impl LineMarkup {
             attributes,
         })
     }
+
+    /// Handles all built in replacement markers.
+    pub fn built_in_replacement_markers(
+        output_text: &mut String,
+        attribute: &Attribute,
+    ) -> Result<bool, Box<dyn Error>> {
+        match attribute.name.as_str() {
+            "select" => Self::select_replacement(output_text, attribute)?,
+            _ => return Ok(false),
+        };
+
+        Ok(true)
+    }
+
+    /// Handles the `select` built-in text replacement marker. Should be called on an attribute with the name
+    /// `select`, but doesn't explicitly check for that.
+    pub fn select_replacement(
+        txt: &mut String,
+        attribute: &Attribute,
+    ) -> Result<(), Box<dyn Error>> {
+        #[derive(Debug, thiserror::Error)]
+        enum SelectErr {
+            #[error("no `value` property was found")]
+            NoValueAttribute,
+            #[error("property of `{0}` not found")]
+            ValueKeyNotFound(String),
+        }
+
+        let value = attribute
+            .properties
+            .get("value")
+            .ok_or_else(|| Box::new(SelectErr::NoValueAttribute))?;
+
+        // todo: should we be doing this?
+        let key = value.to_string();
+
+        let prop = attribute
+            .properties
+            .get(&key)
+            .ok_or_else(|| Box::new(SelectErr::ValueKeyNotFound(key.to_owned())))?;
+
+        match prop {
+            MarkupValue::I32(i) => {
+                txt.push_str(&i.to_string());
+            }
+            MarkupValue::F32(f) => {
+                txt.push_str(&f.to_string());
+            }
+            MarkupValue::Bool(b) => {
+                if *b {
+                    txt.push_str("true");
+                } else {
+                    txt.push_str("false");
+                }
+            }
+            MarkupValue::String(s) => {
+                if s.contains('%') && !s.contains("!%") {
+                    let new_str = s.replace('%', &key);
+                    txt.push_str(&new_str);
+                } else {
+                    txt.push_str(s);
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -554,87 +621,23 @@ impl TokenStream<'_> {
     }
 }
 
-/// Handles all built in replacement markers.
-pub fn built_in_replacement_markers(
-    txt: &mut String,
-    attribute: &Attribute,
-) -> Result<bool, Box<dyn Error>> {
-    match attribute.name.as_str() {
-        "select" => select_replacement(txt, attribute)?,
-        _ => return Ok(false),
-    };
-
-    Ok(true)
-}
-
-/// Handles the `select` built-in text replacement marker. Should be called on an attribute with the name
-/// `select`, but doesn't explicitly check for that.
-pub fn select_replacement(txt: &mut String, attribute: &Attribute) -> Result<(), Box<dyn Error>> {
-    #[derive(Debug, thiserror::Error)]
-    enum SelectErr {
-        #[error("no `value` property was found")]
-        NoValueAttribute,
-        #[error("property of `{0}` not found")]
-        ValueKeyNotFound(String),
-    }
-
-    let value = attribute
-        .properties
-        .get("value")
-        .ok_or_else(|| Box::new(SelectErr::NoValueAttribute))?;
-
-    // todo: should we be doing this?
-    let key = value.to_string();
-
-    let prop = attribute
-        .properties
-        .get(&key)
-        .ok_or_else(|| Box::new(SelectErr::ValueKeyNotFound(key.to_owned())))?;
-
-    match prop {
-        MarkupValue::I32(i) => {
-            txt.push_str(&i.to_string());
-        }
-        MarkupValue::F32(f) => {
-            txt.push_str(&f.to_string());
-        }
-        MarkupValue::Bool(b) => {
-            if *b {
-                txt.push_str("true");
-            } else {
-                txt.push_str("false");
-            }
-        }
-        MarkupValue::String(s) => {
-            if s.contains('%') && !s.contains("!%") {
-                let new_str = s.replace('%', &key);
-                txt.push_str(&new_str);
-            } else {
-                txt.push_str(s);
-            }
-        }
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn passthrough() {
-        assert!(LineMarkup::new("this has no markup in it")
+        assert!(Markup::new("this has no markup in it")
             .unwrap()
             .attributes
             .is_empty());
-        assert!(LineMarkup::new("    ").unwrap().attributes.is_empty());
-        assert!(LineMarkup::new("-----").unwrap().attributes.is_empty());
+        assert!(Markup::new("    ").unwrap().attributes.is_empty());
+        assert!(Markup::new("-----").unwrap().attributes.is_empty());
     }
 
     #[test]
     fn character_markup() {
-        let output = LineMarkup::new("Narrator: this is a simple line").unwrap();
+        let output = Markup::new("Narrator: this is a simple line").unwrap();
         assert_eq!(output.clean_text, "Narrator: this is a simple line");
 
         let attributes = output.attributes;
@@ -652,7 +655,7 @@ mod tests {
 
     #[test]
     fn character_ws() {
-        let output = LineMarkup::new("Narrator:          this is a simple line").unwrap();
+        let output = Markup::new("Narrator:          this is a simple line").unwrap();
         assert_eq!(
             output.clean_text,
             "Narrator:          this is a simple line"
@@ -673,7 +676,7 @@ mod tests {
 
     #[test]
     fn character_no_ws() {
-        let output = LineMarkup::new("Narrator:this is a simple line").unwrap();
+        let output = Markup::new("Narrator:this is a simple line").unwrap();
         assert_eq!(output.clean_text, "Narrator:this is a simple line");
         let attributes = output.attributes;
         assert_eq!(attributes.len(), 1);
@@ -690,7 +693,7 @@ mod tests {
 
     #[test]
     fn escaped_sequences() {
-        assert!(LineMarkup::new(r#"Here's some brackets \[ \]"#)
+        assert!(Markup::new(r#"Here's some brackets \[ \]"#)
             .unwrap()
             .attributes
             .is_empty());
@@ -698,7 +701,7 @@ mod tests {
 
     #[test]
     fn basic_attributes() {
-        let output = LineMarkup::new("Here's a [wave]guy[/wave]").unwrap();
+        let output = Markup::new("Here's a [wave]guy[/wave]").unwrap();
         assert_eq!(output.clean_text, "Here's a guy");
 
         let attributes = output.attributes;
@@ -712,7 +715,7 @@ mod tests {
 
     #[test]
     fn basic_two() {
-        let output = LineMarkup::new(
+        let output = Markup::new(
             "Here's a [wave] guy[/wave] [other_guy] and there goes another guy[/other_guy]",
         )
         .unwrap();
@@ -737,7 +740,7 @@ mod tests {
 
     #[test]
     fn shorthand_attribute() {
-        let output = LineMarkup::new("Here's a [wave=3] guy[/wave]").unwrap();
+        let output = Markup::new("Here's a [wave=3] guy[/wave]").unwrap();
         assert_eq!(output.clean_text, "Here's a  guy");
         let attributes = output.attributes;
 
@@ -751,7 +754,7 @@ mod tests {
 
     #[test]
     fn shorthand_attribute_f32() {
-        let output = LineMarkup::new("Here's a [wave=3.1] guy[/wave]").unwrap();
+        let output = Markup::new("Here's a [wave=3.1] guy[/wave]").unwrap();
         assert_eq!(output.clean_text, "Here's a  guy");
         let attributes = output.attributes;
 
@@ -765,7 +768,7 @@ mod tests {
 
     #[test]
     fn shorthand_attribute_single() {
-        let output = LineMarkup::new("Here's a [wave=yolo] guy[/wave]").unwrap();
+        let output = Markup::new("Here's a [wave=yolo] guy[/wave]").unwrap();
         assert_eq!(output.clean_text, "Here's a  guy");
         let attributes = output.attributes;
 
@@ -782,7 +785,7 @@ mod tests {
 
     #[test]
     fn shorthand_attribute_quotes() {
-        let output = LineMarkup::new("Here's a [wave=\"yooloo there\"] guy[/wave]").unwrap();
+        let output = Markup::new("Here's a [wave=\"yooloo there\"] guy[/wave]").unwrap();
         assert_eq!(output.clean_text, "Here's a  guy");
         let attributes = output.attributes;
 
@@ -800,7 +803,7 @@ mod tests {
     #[test]
     fn close_all() {
         let output =
-            LineMarkup::new("Here's a [wave=\"yooloo there\"][okay=3][another_one]guy[/]").unwrap();
+            Markup::new("Here's a [wave=\"yooloo there\"][okay=3][another_one]guy[/]").unwrap();
         assert_eq!(output.clean_text, "Here's a guy");
         assert_eq!(output.attributes.len(), 3);
         for attribute in output.attributes {
@@ -810,7 +813,7 @@ mod tests {
 
     #[test]
     fn self_closing() {
-        let output = LineMarkup::new("Here's a [screen_shake/] guy.").unwrap();
+        let output = Markup::new("Here's a [screen_shake/] guy.").unwrap();
         assert_eq!(output.clean_text, "Here's a guy.");
         assert_eq!(output.attributes.len(), 1);
 
@@ -823,7 +826,7 @@ mod tests {
 
     #[test]
     fn self_closing_prop() {
-        let output = LineMarkup::new("Here's a [screen_shake value=0.9/] guy.").unwrap();
+        let output = Markup::new("Here's a [screen_shake value=0.9/] guy.").unwrap();
         assert_eq!(output.clean_text, "Here's a guy.");
         assert_eq!(output.attributes.len(), 1);
 
@@ -841,7 +844,7 @@ mod tests {
 
     #[test]
     fn self_closing_prop_quote() {
-        let output = LineMarkup::new("Here's a [screen_shake value=\"0.9\"/] guy.").unwrap();
+        let output = Markup::new("Here's a [screen_shake value=\"0.9\"/] guy.").unwrap();
         assert_eq!(output.clean_text, "Here's a guy.");
         assert_eq!(output.attributes.len(), 1);
 
@@ -859,7 +862,7 @@ mod tests {
 
     #[test]
     fn self_shorthand_closing_prop_quote() {
-        let output = LineMarkup::new("Here's a [screen_shake=\"0.9\"/] guy.").unwrap();
+        let output = Markup::new("Here's a [screen_shake=\"0.9\"/] guy.").unwrap();
         assert_eq!(output.clean_text, "Here's a guy.");
         assert_eq!(output.attributes.len(), 1);
 
@@ -878,7 +881,7 @@ mod tests {
     #[test]
     fn no_markup() {
         let output =
-            LineMarkup::new("Here's a [nomarkup][screen_shake=\"0.9\"/] guy.[/nomarkup]").unwrap();
+            Markup::new("Here's a [nomarkup][screen_shake=\"0.9\"/] guy.[/nomarkup]").unwrap();
         assert_eq!(output.clean_text, "Here's a [screen_shake=\"0.9\"/] guy.");
         assert_eq!(output.attributes.len(), 1);
 
@@ -891,7 +894,7 @@ mod tests {
     /// ----- The following tests are based on the Yarn Spinner repo.
     #[test]
     fn markup_parsing() {
-        let line_markup = LineMarkup::new("A [b]B[/b]").unwrap();
+        let line_markup = Markup::new("A [b]B[/b]").unwrap();
         assert_eq!(line_markup.clean_text, "A B");
         assert_eq!(line_markup.attributes.len(), 1);
         assert_eq!(line_markup.attributes[0].name, "b");
@@ -900,7 +903,7 @@ mod tests {
 
     #[test]
     fn overlapping_attributes() {
-        let line_markup = LineMarkup::new("[a][b][c]X[/b][/a]X[/c]").unwrap();
+        let line_markup = Markup::new("[a][b][c]X[/b][/a]X[/c]").unwrap();
         assert_eq!(line_markup.clean_text, "XX");
         assert_eq!(line_markup.attributes.len(), 3);
 
@@ -912,7 +915,7 @@ mod tests {
 
     #[test]
     fn text_extraction() {
-        let line_markup = LineMarkup::new("A [b]B [c]C[/c][/b]").unwrap();
+        let line_markup = Markup::new("A [b]B [c]C[/c][/b]").unwrap();
         assert_eq!(line_markup.clean_text, "A B C");
         assert_eq!(line_markup.attributes.len(), 2);
 
@@ -938,7 +941,7 @@ mod tests {
 
     #[test]
     fn finding_attributes() {
-        let line_markup = LineMarkup::new("A [b]B[/b] [b]C[/b]").unwrap();
+        let line_markup = Markup::new("A [b]B[/b] [b]C[/b]").unwrap();
         assert_eq!(line_markup.clean_text, "A B C");
         let attribute = line_markup
             .attributes
@@ -955,7 +958,7 @@ mod tests {
     #[test]
     fn multibyte_character_parsing() {
         fn quick_check(input: &str, clean_txt: &str, attribute_name: &str, rng: Range<usize>) {
-            let line_markup = LineMarkup::new(input).unwrap();
+            let line_markup = Markup::new(input).unwrap();
             assert_eq!(line_markup.clean_text, clean_txt);
             assert_eq!(line_markup.attributes.len(), 1);
             assert_eq!(line_markup.attributes[0].range, rng);
@@ -1033,24 +1036,24 @@ mod tests {
     #[test]
     fn unexpected_close_marker_throws() {
         assert!(matches!(
-            LineMarkup::new("[a][/a][/b]").unwrap_err(),
+            Markup::new("[a][/a][/b]").unwrap_err(),
             MarkupParseErr::UnexpectedAttributeClose(v) if v == "b"
         ));
 
         assert!(matches!(
-            LineMarkup::new("[/b]").unwrap_err(),
+            Markup::new("[/b]").unwrap_err(),
             MarkupParseErr::UnexpectedAttributeClose(v) if v == "b"
         ));
 
         assert!(matches!(
-            LineMarkup::new("[a][/][/b]").unwrap_err(),
+            Markup::new("[a][/][/b]").unwrap_err(),
             MarkupParseErr::UnexpectedAttributeClose(v) if v == "b"
         ));
     }
 
     #[test]
     fn markup_shortcut_property_parsing() {
-        let line_markup = LineMarkup::new("[a=1]s[/a]").unwrap();
+        let line_markup = Markup::new("[a=1]s[/a]").unwrap();
         assert_eq!(line_markup.clean_text, "s");
         assert_eq!(line_markup.attributes.len(), 1);
         assert_eq!(line_markup.attributes[0].range, 0..1);
@@ -1064,7 +1067,7 @@ mod tests {
 
     #[test]
     fn markup_multiple_property() {
-        let line = LineMarkup::new("[a p1=1 p2=2]s[/a]").unwrap();
+        let line = Markup::new("[a p1=1 p2=2]s[/a]").unwrap();
         let a_attrib = line.attributes.iter().find(|v| v.name == "a").unwrap();
         assert_eq!(a_attrib.properties.len(), 2);
 
@@ -1075,7 +1078,7 @@ mod tests {
     #[test]
     fn markup_property_parsing() {
         fn tester(input: &str, expected_value: MarkupValue) {
-            let line = LineMarkup::new(input).unwrap();
+            let line = Markup::new(input).unwrap();
 
             assert_eq!(
                 *line.attributes[0].properties.get("p").unwrap(),
@@ -1104,7 +1107,7 @@ mod tests {
     #[test]
     fn test_multiple_attributes() {
         fn test(input: &str) {
-            let line = LineMarkup::new(input).unwrap();
+            let line = Markup::new(input).unwrap();
             assert_eq!(line.clean_text, "A B C D");
 
             assert_eq!(line.attributes.len(), 2);
@@ -1125,7 +1128,7 @@ mod tests {
 
     #[test]
     fn self_closing_attributes() {
-        let line = LineMarkup::new("A [a/] B").unwrap();
+        let line = Markup::new("A [a/] B").unwrap();
         assert_eq!(line.clean_text, "A B");
         assert_eq!(line.attributes.len(), 1);
 
@@ -1137,15 +1140,15 @@ mod tests {
 
     #[test]
     fn trailing_whitespace() {
-        assert_eq!(LineMarkup::new("A [a/] B").unwrap().clean_text, "A B");
+        assert_eq!(Markup::new("A [a/] B").unwrap().clean_text, "A B");
         assert_eq!(
-            LineMarkup::new("A [a trimwhitespace=true/] B")
+            Markup::new("A [a trimwhitespace=true/] B")
                 .unwrap()
                 .clean_text,
             "A B"
         );
         assert_eq!(
-            LineMarkup::new("A [a trimwhitespace=false/] B")
+            Markup::new("A [a trimwhitespace=false/] B")
                 .unwrap()
                 .clean_text,
             "A  B"
@@ -1155,13 +1158,13 @@ mod tests {
         //     "A  B"
         // );
         assert_eq!(
-            LineMarkup::new("A [nomarkup trimwhitespace=false/] B")
+            Markup::new("A [nomarkup trimwhitespace=false/] B")
                 .unwrap()
                 .clean_text,
             "A  B"
         );
         assert_eq!(
-            LineMarkup::new("A [nomarkup trimwhitespace=true/] B")
+            Markup::new("A [nomarkup trimwhitespace=true/] B")
                 .unwrap()
                 .clean_text,
             "A B"
@@ -1171,7 +1174,7 @@ mod tests {
     #[test]
     fn implicit_character_parsing() {
         fn test(input: &str) {
-            let line = LineMarkup::new(input).unwrap();
+            let line = Markup::new(input).unwrap();
             // assert_eq!(line.clean_text, "Mae: Wow!");
             assert_eq!(line.attributes.len(), 1);
 
@@ -1192,7 +1195,7 @@ mod tests {
 
     #[test]
     fn no_markup_mode_parsing() {
-        let line = LineMarkup::new("S [a]S[/a] [nomarkup][a]S;][/a][/nomarkup]").unwrap();
+        let line = Markup::new("S [a]S[/a] [nomarkup][a]S;][/a][/nomarkup]").unwrap();
 
         assert_eq!(line.clean_text, "S S [a]S;][/a]");
 
@@ -1209,7 +1212,7 @@ mod tests {
 
     #[test]
     fn escaping() {
-        let line = LineMarkup::new(r#"[a]hello \[b\]hello\[/b\][/a]"#).unwrap();
+        let line = Markup::new(r#"[a]hello \[b\]hello\[/b\][/a]"#).unwrap();
         assert_eq!(line.clean_text, "hello [b]hello[/b]");
         assert_eq!(line.attributes.len(), 1);
 
@@ -1220,7 +1223,7 @@ mod tests {
 
     #[test]
     fn numeric_properties() {
-        let line = LineMarkup::new("[select value=1 1=one 2=two 3=three /]").unwrap();
+        let line = Markup::new("[select value=1 1=one 2=two 3=three /]").unwrap();
 
         assert_eq!(line.attributes.len(), 1);
         let atty = &line.attributes[0];
@@ -1248,7 +1251,7 @@ mod tests {
 
     #[test]
     fn found() {
-        LineMarkup::new(
+        Markup::new(
             r#"Do you have any other [select value=jim jim="character" bob ="actors"/] to show me? I know I need $APPLES to be true for this."#,
         ).unwrap();
     }

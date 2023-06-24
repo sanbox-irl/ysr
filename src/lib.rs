@@ -11,37 +11,29 @@
 
 mod byte_code;
 mod command_handler;
-mod line_handler;
+mod localization;
 mod markup;
 mod proto;
 mod storage;
 
-pub use byte_code::{YarnProgram, YarnProgramError};
-pub use command_handler::*;
-pub use line_handler::LineHandler;
-pub use markup::*;
-pub use storage::YarnStorage;
+pub use byte_code::{Program, ProgramError};
+pub use command_handler::{is_built_in_function, process_built_in_function};
+pub use localization::Localization;
+pub use markup::Markup;
+pub use storage::Storage;
 
-use byte_code::Instruction;
-// utility
-mod type_names {
-    pub const F32: &str = "f32";
-    pub const STR: &str = "str";
-    pub const BOOL: &str = "bool";
-}
-
-/// A Virtual Machine which executes a [YarnProgram].
+/// A Virtual Machine which executes a [Program].
 #[derive(Debug)]
-pub struct YarnRunner {
-    program: YarnProgram,
+pub struct Runner {
+    program: Program,
     runner_state: RunnerState,
 
     state: Option<State>,
 }
 
-impl YarnRunner {
-    /// Creates a new [YarnRunner] with the given Program.
-    pub fn new(program: YarnProgram) -> Self {
+impl Runner {
+    /// Creates a new [Runner] with the given Program.
+    pub fn new(program: Program) -> Self {
         Self {
             program,
             runner_state: RunnerState::Ready,
@@ -50,10 +42,11 @@ impl YarnRunner {
     }
 
     /// Get a reference to the inner yarn program
-    pub fn program(&self) -> &YarnProgram {
+    pub fn program(&self) -> &Program {
         &self.program
     }
 
+    /// Manually sets the node that we run. Returns `Ok` if a node by that name exists in the loaded `Program`.
     pub fn set_node(&mut self, node_name: impl Into<String>) -> Result<(), NodeDoesNotExist> {
         let node_name = node_name.into();
 
@@ -76,7 +69,7 @@ impl YarnRunner {
 
     pub fn execute(
         &mut self,
-        storage: &mut YarnStorage,
+        storage: &mut Storage,
     ) -> Result<Option<ExecutionOutput>, ExecutionError> {
         let Some(mut state) = self.state.as_mut() else {
             return Err(ExecutionError::NotReadyToExecute(NotReadyToExecute::NoNodeSelected));
@@ -140,7 +133,7 @@ impl YarnRunner {
                         substitutions.push(state.stack.pop().expect("handle errr").to_string());
                     }
 
-                    return Ok(Some(ExecutionOutput::Line(YarnLine {
+                    return Ok(Some(ExecutionOutput::Line(Line {
                         string_key: line.string_key.clone(),
                         substitutions,
                     })));
@@ -178,7 +171,7 @@ impl YarnRunner {
                     };
 
                     state.options.push(YarnOption {
-                        line: YarnLine {
+                        line: Line {
                             string_key: option_data.line.string_key.clone(),
                             substitutions,
                         },
@@ -202,13 +195,13 @@ impl YarnRunner {
                     ))));
                 }
                 Instruction::PushString(str) => {
-                    state.stack.push(YarnValue::Str(str.clone()));
+                    state.stack.push(Value::Str(str.clone()));
                 }
                 Instruction::PushFloat(f) => {
-                    state.stack.push(YarnValue::F32(*f));
+                    state.stack.push(Value::F32(*f));
                 }
                 Instruction::PushBool(b) => {
-                    state.stack.push(YarnValue::Bool(*b));
+                    state.stack.push(Value::Bool(*b));
                 }
                 Instruction::Pop => {
                     state.stack.pop();
@@ -291,15 +284,13 @@ impl YarnRunner {
         };
 
         let state = self.state.as_mut().expect("internal yarn-runner error");
-        state
-            .stack
-            .push(YarnValue::Str(destination_name.to_owned()));
+        state.stack.push(Value::Str(destination_name.to_owned()));
         self.runner_state = RunnerState::Ready;
 
         Ok(())
     }
 
-    pub fn return_function(&mut self, value: YarnValue) -> Result<(), UnexpectedFunctionReturn> {
+    pub fn return_function(&mut self, value: Value) -> Result<(), UnexpectedFunctionReturn> {
         if self.runner_state != RunnerState::WaitingForFunctionReturn {
             return Err(UnexpectedFunctionReturn);
         };
@@ -316,13 +307,13 @@ impl YarnRunner {
 struct State {
     node_name: String,
     instruction: usize,
-    stack: Vec<YarnValue>,
+    stack: Vec<Value>,
     options: Vec<YarnOption>,
 }
 
 #[derive(Debug)]
 pub enum ExecutionOutput {
-    Line(YarnLine),
+    Line(Line),
     Options(Vec<YarnOption>),
     Command(String),
     Function(FuncData),
@@ -331,28 +322,32 @@ pub enum ExecutionOutput {
 /// The data of a function call, such as `<< if roll(6) >>`
 #[derive(Debug)]
 pub struct FuncData {
-    /// The function name. In the example `roll(6)`, this would be `"roll"`.
+    /// The function name.
+    ///
+    /// In the example `roll(6)`, this would be `"roll"`.
     pub function_name: String,
     /// The parameters given by the user. This is not necessarily the correct amount of parameters.
-    pub parameters: Vec<YarnValue>,
+    ///
+    /// In the example `roll(6)`, this would be `vec![YarnValue::F32(6.0)]`
+    pub parameters: Vec<Value>,
 }
 
-/// This represents the current state of the [YarnRunner].
+/// This represents the current state of the [Runner].
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum RunnerState {
-    /// The [YarnRunner] is ready for `execute` to be called.
+    /// The [Runner] is ready for `execute` to be called.
     Ready,
 
-    /// The [YarnRunner] is waiting for an option to be selected with `select_option`.
+    /// The [Runner] is waiting for an option to be selected with `select_option`.
     WaitingForOptionSelection(Vec<String>),
 
-    /// The [YarnRunner] is waiting for a function dispatch to return.
+    /// The [Runner] is waiting for a function dispatch to return.
     WaitingForFunctionReturn,
 }
 
 /// Yarn supports three kinds of values: f32s, bools, and Strings.
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
-pub enum YarnValue {
+pub enum Value {
     /// A boolean
     Bool(bool),
     /// An owned string
@@ -361,22 +356,22 @@ pub enum YarnValue {
     F32(f32),
 }
 
-impl std::fmt::Display for YarnValue {
+impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            YarnValue::Bool(v) => v.fmt(f),
-            YarnValue::Str(v) => v.fmt(f),
-            YarnValue::F32(v) => v.fmt(f),
+            Value::Bool(v) => v.fmt(f),
+            Value::Str(v) => v.fmt(f),
+            Value::F32(v) => v.fmt(f),
         }
     }
 }
 
-impl YarnValue {
+impl Value {
     /// Converts a given value to a bool.
     pub fn try_to_bool(&self) -> Result<bool, ConversionError> {
         let v = match self {
-            YarnValue::Bool(v) => *v,
-            YarnValue::Str(s) => {
+            Value::Bool(v) => *v,
+            Value::Str(s) => {
                 // these rules need to be taken from the C# source
                 match s.as_str() {
                     // the C# implementation actually supports arbitrary capitalization
@@ -391,7 +386,7 @@ impl YarnValue {
                     }
                 }
             }
-            YarnValue::F32(f) => *f != 0.0,
+            Value::F32(f) => *f != 0.0,
         };
 
         Ok(v)
@@ -400,18 +395,18 @@ impl YarnValue {
     /// Converts a given value to a string.
     pub fn try_to_f32(&self) -> Result<f32, ConversionError> {
         let v = match self {
-            YarnValue::Bool(v) => {
+            Value::Bool(v) => {
                 if *v {
                     1.0
                 } else {
                     0.0
                 }
             }
-            YarnValue::Str(s) => s.parse::<f32>().map_err(|_| ConversionError {
+            Value::Str(s) => s.parse::<f32>().map_err(|_| ConversionError {
                 target_type: type_names::F32,
                 found_type: type_names::STR,
             })?,
-            YarnValue::F32(f) => *f,
+            Value::F32(f) => *f,
         };
 
         Ok(v)
@@ -421,14 +416,14 @@ impl YarnValue {
 // this is identical to `Line` in `bytecode` but I've made them separate types so
 // we have more flexibility with semver.
 #[derive(Debug)]
-pub struct YarnLine {
+pub struct Line {
     pub(crate) string_key: String,
     pub(crate) substitutions: Vec<String>,
 }
 
 #[derive(Debug)]
 pub struct YarnOption {
-    pub(crate) line: YarnLine,
+    pub(crate) line: Line,
     pub(crate) destination: String,
 
     /// if `None`, then this line never had a condition. If Some, the status is if it passed.
@@ -436,7 +431,7 @@ pub struct YarnOption {
 }
 
 impl YarnOption {
-    pub fn line(&self) -> &YarnLine {
+    pub fn line(&self) -> &Line {
         &self.line
     }
 
@@ -507,3 +502,11 @@ pub enum OptionSelectionError {
 #[derive(Debug, thiserror::Error)]
 #[error("runner is not in state `WaitingForFunctionReturn")]
 pub struct UnexpectedFunctionReturn;
+
+use byte_code::Instruction;
+// utility
+mod type_names {
+    pub const F32: &str = "f32";
+    pub const STR: &str = "str";
+    pub const BOOL: &str = "bool";
+}

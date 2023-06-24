@@ -1,18 +1,32 @@
 use rand::Rng;
 
-use crate::{FuncData, YarnValue};
+use crate::{FuncData, Value};
 
-/// If this returns `None`, then this function is not a default function (see `is_default_function`),
-/// and users must handle this themselves.
-pub fn handle_default_functions(func_data: &FuncData) -> Option<Result<YarnValue, FuncError>> {
-    if is_default_function(&func_data.function_name) {
+/// Processes a function if it's a built in function. To see a list of built in functions in Yarn, consult
+/// (this_page)[https://docs.yarnspinner.dev/getting-started/writing-in-yarn/functions]. Additionally, some C# namespaced
+/// functions are handled, particularly algebraic and logical functions.
+///
+/// In practice, because you can define your own functions, you may with to adopt the following pattern:
+///
+/// ```rs,no_run
+/// # fn handle_func(func_data: &FuncData) -> Result<YarnValue, FuncError> {
+/// yarn_spinner::process_built_in_functions(func_data).unwrap_or_else(|func_data| {
+///     // handle the function yourself here.
+/// })
+/// # }
+/// ```
+pub fn process_built_in_function(func_data: &FuncData) -> Option<Result<Value, FuncError>> {
+    if is_built_in_function(&func_data.function_name) {
         Some(handle_known_default_function(func_data))
     } else {
         None
     }
 }
 
-pub fn is_default_function(func_name: &str) -> bool {
+/// Checks if a function, given the name, is a built in function.
+/// If this returns `true`, then `process_built_in_functions` will always return `Some`. To that end,
+/// you can just run `process_built_in_functions` if that works for you.
+pub fn is_built_in_function(func_name: &str) -> bool {
     matches!(
         func_name,
         "visited"
@@ -51,8 +65,8 @@ pub fn is_default_function(func_name: &str) -> bool {
 }
 
 // we use this smaller function with only a `Result` for easier writing (we don't need to wrap everything in `Some`)
-fn handle_known_default_function(func_data: &FuncData) -> Result<YarnValue, FuncError> {
-    fn param_count_is(params: &[YarnValue], expected: usize) -> Result<(), FuncError> {
+fn handle_known_default_function(func_data: &FuncData) -> Result<Value, FuncError> {
+    fn param_count_is(params: &[Value], expected: usize) -> Result<(), FuncError> {
         if params.len() != expected {
             return Err(FuncError::UnexpectedParamCount {
                 expected,
@@ -63,42 +77,42 @@ fn handle_known_default_function(func_data: &FuncData) -> Result<YarnValue, Func
         Ok(())
     }
 
-    fn extract_f32(param: &YarnValue) -> Result<f32, FuncError> {
+    fn extract_f32(param: &Value) -> Result<f32, FuncError> {
         match param {
-            YarnValue::Bool(_) => Err(FuncError::UnexpectedParamType {
+            Value::Bool(_) => Err(FuncError::UnexpectedParamType {
                 expected: crate::type_names::F32,
                 found: crate::type_names::BOOL,
             }),
-            YarnValue::Str(_) => Err(FuncError::UnexpectedParamType {
+            Value::Str(_) => Err(FuncError::UnexpectedParamType {
                 expected: crate::type_names::F32,
                 found: crate::type_names::STR,
             }),
-            YarnValue::F32(v) => Ok(*v),
+            Value::F32(v) => Ok(*v),
         }
     }
 
-    fn extract_str(param: &YarnValue) -> Result<&str, FuncError> {
+    fn extract_str(param: &Value) -> Result<&str, FuncError> {
         match param {
-            YarnValue::Bool(_) => Err(FuncError::UnexpectedParamType {
+            Value::Bool(_) => Err(FuncError::UnexpectedParamType {
                 expected: crate::type_names::STR,
                 found: crate::type_names::BOOL,
             }),
-            YarnValue::Str(v) => Ok(v),
-            YarnValue::F32(_) => Err(FuncError::UnexpectedParamType {
+            Value::Str(v) => Ok(v),
+            Value::F32(_) => Err(FuncError::UnexpectedParamType {
                 expected: crate::type_names::STR,
                 found: crate::type_names::F32,
             }),
         }
     }
 
-    fn extract_bool(param: &YarnValue) -> Result<bool, FuncError> {
+    fn extract_bool(param: &Value) -> Result<bool, FuncError> {
         match param {
-            YarnValue::Bool(v) => Ok(*v),
-            YarnValue::Str(_) => Err(FuncError::UnexpectedParamType {
+            Value::Bool(v) => Ok(*v),
+            Value::Str(_) => Err(FuncError::UnexpectedParamType {
                 expected: crate::type_names::BOOL,
                 found: crate::type_names::STR,
             }),
-            YarnValue::F32(_) => Err(FuncError::UnexpectedParamType {
+            Value::F32(_) => Err(FuncError::UnexpectedParamType {
                 expected: crate::type_names::BOOL,
                 found: crate::type_names::F32,
             }),
@@ -115,7 +129,7 @@ fn handle_known_default_function(func_data: &FuncData) -> Result<YarnValue, Func
         "random" => {
             param_count_is(&func_data.parameters, 0)?;
 
-            Ok(YarnValue::F32(rand::thread_rng().gen_range(0.0..1.0)))
+            Ok(Value::F32(rand::thread_rng().gen_range(0.0..1.0)))
         }
         "random_range" => {
             param_count_is(&func_data.parameters, 2)?;
@@ -123,19 +137,19 @@ fn handle_known_default_function(func_data: &FuncData) -> Result<YarnValue, Func
             let bottom = extract_f32(&func_data.parameters[0])?;
             let top = extract_f32(&func_data.parameters[1])?;
 
-            Ok(YarnValue::F32(rand::thread_rng().gen_range(bottom..top)))
+            Ok(Value::F32(rand::thread_rng().gen_range(bottom..top)))
         }
         "dice" => {
             param_count_is(&func_data.parameters, 1)?;
             let top = extract_f32(&func_data.parameters[0])? as u32;
 
-            Ok(YarnValue::F32(rand::thread_rng().gen_range(1..top) as f32))
+            Ok(Value::F32(rand::thread_rng().gen_range(1..top) as f32))
         }
         "round" => {
             param_count_is(&func_data.parameters, 1)?;
             let num = extract_f32(&func_data.parameters[0])?;
 
-            Ok(YarnValue::F32(num.round()))
+            Ok(Value::F32(num.round()))
         }
         "round_places" => {
             param_count_is(&func_data.parameters, 2)?;
@@ -144,7 +158,7 @@ fn handle_known_default_function(func_data: &FuncData) -> Result<YarnValue, Func
 
             let places_f = 10.0f32.powi(places as i32);
 
-            Ok(YarnValue::F32((num * places_f).round() / places_f))
+            Ok(Value::F32((num * places_f).round() / places_f))
         }
         "floor" => {
             param_count_is(&func_data.parameters, 1)?;
@@ -156,7 +170,7 @@ fn handle_known_default_function(func_data: &FuncData) -> Result<YarnValue, Func
                 num.floor()
             };
 
-            Ok(YarnValue::F32(output))
+            Ok(Value::F32(output))
         }
         "ceil" => {
             param_count_is(&func_data.parameters, 1)?;
@@ -168,7 +182,7 @@ fn handle_known_default_function(func_data: &FuncData) -> Result<YarnValue, Func
                 num.ceil()
             };
 
-            Ok(YarnValue::F32(output))
+            Ok(Value::F32(output))
         }
         "inc" => {
             param_count_is(&func_data.parameters, 1)?;
@@ -182,7 +196,7 @@ fn handle_known_default_function(func_data: &FuncData) -> Result<YarnValue, Func
                 num.ceil()
             };
 
-            Ok(YarnValue::F32(output))
+            Ok(Value::F32(output))
         }
         "dec" => {
             param_count_is(&func_data.parameters, 1)?;
@@ -196,152 +210,152 @@ fn handle_known_default_function(func_data: &FuncData) -> Result<YarnValue, Func
                 num.floor()
             };
 
-            Ok(YarnValue::F32(output))
+            Ok(Value::F32(output))
         }
         "decimal" => {
             param_count_is(&func_data.parameters, 1)?;
             let num = extract_f32(&func_data.parameters[0])?;
 
-            Ok(YarnValue::F32(num.fract()))
+            Ok(Value::F32(num.fract()))
         }
         "int" => {
             param_count_is(&func_data.parameters, 1)?;
             let num = extract_f32(&func_data.parameters[0])?;
 
-            Ok(YarnValue::F32(num.floor()))
+            Ok(Value::F32(num.floor()))
         }
         "Number.EqualTo" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_f32(&func_data.parameters[1])?;
             let b = extract_f32(&func_data.parameters[0])?;
 
-            Ok(YarnValue::Bool(a == b))
-        },
+            Ok(Value::Bool(a == b))
+        }
         "Number.NotEqualTo" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_f32(&func_data.parameters[1])?;
             let b = extract_f32(&func_data.parameters[0])?;
 
-            Ok(YarnValue::Bool(a != b))
-        },
+            Ok(Value::Bool(a != b))
+        }
         "String.EqualTo" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_str(&func_data.parameters[1])?;
             let b = extract_str(&func_data.parameters[0])?;
 
-            Ok(YarnValue::Bool(a == b))
-        },
+            Ok(Value::Bool(a == b))
+        }
         "String.NotEqualTo" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_str(&func_data.parameters[1])?;
             let b = extract_str(&func_data.parameters[0])?;
 
-            Ok(YarnValue::Bool(a != b))
-        },
+            Ok(Value::Bool(a != b))
+        }
         "Bool.EqualTo" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_bool(&func_data.parameters[1])?;
             let b = extract_bool(&func_data.parameters[0])?;
 
-            Ok(YarnValue::Bool(a == b))
-        },
+            Ok(Value::Bool(a == b))
+        }
         "Bool.NotEqualTo" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_bool(&func_data.parameters[1])?;
             let b = extract_bool(&func_data.parameters[0])?;
 
-            Ok(YarnValue::Bool(a != b))
-        },
+            Ok(Value::Bool(a != b))
+        }
         "Number.GreaterThan" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_f32(&func_data.parameters[1])?;
             let b = extract_f32(&func_data.parameters[0])?;
 
-            Ok(YarnValue::Bool(a > b))
-        },
+            Ok(Value::Bool(a > b))
+        }
         "Number.LessThan" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_f32(&func_data.parameters[1])?;
             let b = extract_f32(&func_data.parameters[0])?;
 
-            Ok(YarnValue::Bool(a < b))
-        },
+            Ok(Value::Bool(a < b))
+        }
         "Number.GreaterThanOrEqualTo" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_f32(&func_data.parameters[1])?;
             let b = extract_f32(&func_data.parameters[0])?;
 
-            Ok(YarnValue::Bool(a >= b))
-        },
+            Ok(Value::Bool(a >= b))
+        }
         "Number.LessThanOrEqualTo" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_f32(&func_data.parameters[1])?;
             let b = extract_f32(&func_data.parameters[0])?;
 
-            Ok(YarnValue::Bool(a <= b))
-        },
+            Ok(Value::Bool(a <= b))
+        }
         "Bool.Or" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_bool(&func_data.parameters[1])?;
             let b = extract_bool(&func_data.parameters[0])?;
 
-            Ok(YarnValue::Bool(a || b))
-        },
+            Ok(Value::Bool(a || b))
+        }
         "Bool.And" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_bool(&func_data.parameters[1])?;
             let b = extract_bool(&func_data.parameters[0])?;
 
-            Ok(YarnValue::Bool(a && b))
-        },
+            Ok(Value::Bool(a && b))
+        }
         "Bool.Xor" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_bool(&func_data.parameters[1])?;
             let b = extract_bool(&func_data.parameters[0])?;
 
-            Ok(YarnValue::Bool(a ^ b))
-        },
+            Ok(Value::Bool(a ^ b))
+        }
         "Bool.Not" => {
             param_count_is(&func_data.parameters, 1)?;
             let a = extract_bool(&func_data.parameters[0])?;
 
-            Ok(YarnValue::Bool(!a))
-        },
+            Ok(Value::Bool(!a))
+        }
         "Number.Add" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_f32(&func_data.parameters[1])?;
             let b = extract_f32(&func_data.parameters[0])?;
 
-            Ok(YarnValue::F32(a + b))
-        },
+            Ok(Value::F32(a + b))
+        }
         "Number.Minus" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_f32(&func_data.parameters[1])?;
             let b = extract_f32(&func_data.parameters[0])?;
 
-            Ok(YarnValue::F32(a - b))
-        },
+            Ok(Value::F32(a - b))
+        }
         "Number.Multiply" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_f32(&func_data.parameters[1])?;
             let b = extract_f32(&func_data.parameters[0])?;
 
-            Ok(YarnValue::F32(a * b))
-        },
+            Ok(Value::F32(a * b))
+        }
         "Number.Divide" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_f32(&func_data.parameters[1])?;
             let b = extract_f32(&func_data.parameters[0])?;
 
-            Ok(YarnValue::F32(a / b))
-        },
+            Ok(Value::F32(a / b))
+        }
         "Number.Modulo" => {
             param_count_is(&func_data.parameters, 2)?;
             let a = extract_f32(&func_data.parameters[1])?;
             let b = extract_f32(&func_data.parameters[0])?;
 
-            Ok(YarnValue::F32(a % b))
-        },
+            Ok(Value::F32(a % b))
+        }
         _ => unreachable!(),
     }
 }
