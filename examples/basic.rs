@@ -43,10 +43,14 @@ fn main() {
                 let selection = selection.interact_on(&console).unwrap();
                 yarn_runner.select_option(selection).unwrap();
             }
-            ExecutionOutput::Command(cmd) => todo!(),
+            ExecutionOutput::Command(cmd) => {
+                println!("Executing command `{}`...jk this is a demo", cmd);
+            }
             ExecutionOutput::Function(function) => {
                 // we can do this because we know that we've implemented the default functions
-                let output = ysr::process_built_in_function(&function).unwrap().unwrap();
+                let output = ysr::process_built_in_function(&function, &yarn_runner)
+                    .unwrap()
+                    .unwrap();
 
                 yarn_runner.return_function(output).unwrap();
             }

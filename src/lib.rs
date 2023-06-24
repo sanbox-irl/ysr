@@ -10,14 +10,16 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
 mod byte_code;
-mod command_handler;
+mod functions;
 mod localization;
 mod markup;
 mod proto;
 mod storage;
 
+use std::collections::HashMap;
+
 pub use byte_code::{Program, ProgramError};
-pub use command_handler::{is_built_in_function, process_built_in_function};
+pub use functions::{is_built_in_function, process_built_in_function};
 pub use localization::Localization;
 pub use markup::Markup;
 pub use storage::Storage;
@@ -26,8 +28,9 @@ pub use storage::Storage;
 #[derive(Debug)]
 pub struct Runner {
     program: Program,
-    runner_state: RunnerState,
+    visited_nodes: HashMap<String, usize>,
 
+    waiting_status: Option<WaitingStatus>,
     state: Option<State>,
 }
 
@@ -36,7 +39,8 @@ impl Runner {
     pub fn new(program: Program) -> Self {
         Self {
             program,
-            runner_state: RunnerState::Ready,
+            visited_nodes: HashMap::new(),
+            waiting_status: None,
             state: None,
         }
     }
@@ -54,15 +58,26 @@ impl Runner {
             return Err(NodeDoesNotExist(node_name));
         }
 
-        // perf: we could reuse the stack + options in some manner
+        // reuse the old stack and options, cause why not
+        let (stack, options) = self
+            .state
+            .take()
+            .map(|mut old_state| {
+                old_state.stack.clear();
+                old_state.options.clear();
+
+                (old_state.stack, old_state.options)
+            })
+            .unwrap_or_default();
+
         self.state = Some(State {
             node_name,
             instruction: 0,
-            stack: vec![],
-            options: vec![],
+            stack,
+            options,
         });
 
-        self.runner_state = RunnerState::Ready;
+        self.waiting_status = None;
 
         Ok(())
     }
@@ -75,19 +90,19 @@ impl Runner {
             return Err(ExecutionError::NotReadyToExecute(NotReadyToExecute::NoNodeSelected));
         };
 
-        match self.runner_state {
+        match self.waiting_status {
             // the issue is whether we've got a state really
-            RunnerState::WaitingForOptionSelection(_) => {
+            Some(WaitingStatus::OptionSelection(_)) => {
                 return Err(ExecutionError::NotReadyToExecute(
                     NotReadyToExecute::WaitingForOptionSelection,
                 ));
             }
-            RunnerState::WaitingForFunctionReturn => {
+            Some(WaitingStatus::FunctionReturn) => {
                 return Err(ExecutionError::NotReadyToExecute(
                     NotReadyToExecute::WaitingForFunctionReturn,
                 ));
             }
-            RunnerState::Ready => {
+            None => {
                 // good to go here!
             }
         }
@@ -181,13 +196,13 @@ impl Runner {
                 }
                 Instruction::ShowOptions => {
                     // switch our state over...
-                    self.runner_state = RunnerState::WaitingForOptionSelection(
+                    self.waiting_status = Some(WaitingStatus::OptionSelection(
                         state
                             .options
                             .iter()
                             .map(|v| v.destination.clone())
                             .collect(),
-                    );
+                    ));
 
                     // give em da options!
                     return Ok(Some(ExecutionOutput::Options(std::mem::take(
@@ -215,7 +230,7 @@ impl Runner {
                         parameters.push(state.stack.pop().unwrap());
                     }
 
-                    self.runner_state = RunnerState::WaitingForFunctionReturn;
+                    self.waiting_status = Some(WaitingStatus::FunctionReturn);
 
                     return Ok(Some(ExecutionOutput::Function(FuncData {
                         function_name: function_name.clone(),
@@ -272,7 +287,7 @@ impl Runner {
     /// - If we are not in WaitingForOptionSelection
     /// - If the selection given is `>= options.len()` (ie, you chose 4 out of 2 options).
     pub fn select_option(&mut self, selection: usize) -> Result<(), OptionSelectionError> {
-        let RunnerState::WaitingForOptionSelection(destinations) = &mut self.runner_state else {
+        let Some(WaitingStatus::OptionSelection(destinations)) = &mut self.waiting_status else {
             return Err(OptionSelectionError::UnexpectedOptionSelection);
         };
 
@@ -285,21 +300,41 @@ impl Runner {
 
         let state = self.state.as_mut().expect("internal yarn-runner error");
         state.stack.push(Value::Str(destination_name.to_owned()));
-        self.runner_state = RunnerState::Ready;
+        self.waiting_status = None;
 
         Ok(())
     }
 
     pub fn return_function(&mut self, value: Value) -> Result<(), UnexpectedFunctionReturn> {
-        if self.runner_state != RunnerState::WaitingForFunctionReturn {
+        let Some(WaitingStatus::FunctionReturn) = &self.waiting_status else {
             return Err(UnexpectedFunctionReturn);
         };
 
         let state = self.state.as_mut().expect("internal yarn-runner error");
         state.stack.push(value);
-        self.runner_state = RunnerState::Ready;
+        self.waiting_status = None;
 
         Ok(())
+    }
+
+    /// Gets the current [WaitingStatus]. If this isn't [None], then we're waiting on *something*.
+    pub fn waiting_status(&self) -> &Option<WaitingStatus> {
+        &self.waiting_status
+    }
+
+    /// Gets immutable access to the map of visited nodes. This is only used to process the commands `visited` and `visited_count`.
+    /// See [crate::process_built_in_function] for more.
+    pub fn visited_nodes(&self) -> &HashMap<String, usize> {
+        &self.visited_nodes
+    }
+
+    /// Gets mutable access to the map of visited nodes. This is only used to process the commands `visited` and `visited_count`.
+    /// See [crate::process_built_in_function] for more.
+    ///
+    /// Generally, you shouldn't mutate this data to accurately reflect the program's progress, but nothing tracks this map, so you could do
+    /// whatever you want to it.
+    pub fn visited_nodes_mut(&mut self) -> &mut HashMap<String, usize> {
+        &mut self.visited_nodes
     }
 }
 
@@ -334,15 +369,12 @@ pub struct FuncData {
 
 /// This represents the current state of the [Runner].
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum RunnerState {
-    /// The [Runner] is ready for `execute` to be called.
-    Ready,
-
+pub enum WaitingStatus {
     /// The [Runner] is waiting for an option to be selected with `select_option`.
-    WaitingForOptionSelection(Vec<String>),
+    OptionSelection(Vec<String>),
 
-    /// The [Runner] is waiting for a function dispatch to return.
-    WaitingForFunctionReturn,
+    /// The [Runner] is waiting for a function dispatch to return with `return_function`
+    FunctionReturn,
 }
 
 /// Yarn supports three kinds of values: f32s, bools, and Strings.

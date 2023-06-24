@@ -15,9 +15,12 @@ use crate::{FuncData, Value};
 /// })
 /// # }
 /// ```
-pub fn process_built_in_function(func_data: &FuncData) -> Option<Result<Value, FuncError>> {
+pub fn process_built_in_function(
+    func_data: &FuncData,
+    runner: &crate::Runner,
+) -> Option<Result<Value, FuncError>> {
     if is_built_in_function(&func_data.function_name) {
-        Some(handle_known_default_function(func_data))
+        Some(handle_known_default_function(func_data, runner))
     } else {
         None
     }
@@ -65,7 +68,10 @@ pub fn is_built_in_function(func_name: &str) -> bool {
 }
 
 // we use this smaller function with only a `Result` for easier writing (we don't need to wrap everything in `Some`)
-fn handle_known_default_function(func_data: &FuncData) -> Result<Value, FuncError> {
+fn handle_known_default_function(
+    func_data: &FuncData,
+    runner: &crate::Runner,
+) -> Result<Value, FuncError> {
     fn param_count_is(params: &[Value], expected: usize) -> Result<(), FuncError> {
         if params.len() != expected {
             return Err(FuncError::UnexpectedParamCount {
@@ -121,10 +127,23 @@ fn handle_known_default_function(func_data: &FuncData) -> Result<Value, FuncErro
 
     match func_data.function_name.as_str() {
         "visited" => {
-            todo!()
+            param_count_is(&func_data.parameters, 1)?;
+            let name = extract_str(&func_data.parameters[0])?;
+
+            Ok(Value::Bool(runner.visited_nodes().contains_key(name)))
         }
         "visited_count" => {
-            todo!()
+            param_count_is(&func_data.parameters, 1)?;
+            let name = extract_str(&func_data.parameters[0])?;
+
+            // as per ys docs, when `visited == false`, `visited_count == 0`.
+            Ok(Value::F32(
+                runner
+                    .visited_nodes()
+                    .get(name)
+                    .map(|v| *v as f32)
+                    .unwrap_or_default(),
+            ))
         }
         "random" => {
             param_count_is(&func_data.parameters, 0)?;
