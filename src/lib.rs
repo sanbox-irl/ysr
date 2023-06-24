@@ -58,6 +58,8 @@ impl Runner {
             return Err(NodeDoesNotExist(node_name));
         }
 
+        let mut old_name = None;
+
         // reuse the old stack and options, cause why not
         let (stack, options) = self
             .state
@@ -66,9 +68,17 @@ impl Runner {
                 old_state.stack.clear();
                 old_state.options.clear();
 
+                // grab the old name...
+                old_name = Some(old_state.node_name);
+
                 (old_state.stack, old_state.options)
             })
             .unwrap_or_default();
+
+        // mark that node as having been visited
+        if let Some(old_name) = old_name {
+            *self.visited_nodes.entry(old_name).or_default() += 1;
+        }
 
         self.state = Some(State {
             node_name,
@@ -458,7 +468,7 @@ pub struct YarnOption {
     pub(crate) line: Line,
     pub(crate) destination: String,
 
-    /// if `None`, then this line never had a condition. If Some, the status is if it passed.
+    /// if `None`, then this line never had a condition. If Some, `true` if passed.
     pub(crate) condition_passed: Option<bool>,
 }
 

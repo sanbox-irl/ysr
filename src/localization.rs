@@ -5,7 +5,8 @@ pub struct Localization(HashMap<String, String>);
 
 impl Localization {
     /// Creates a new localization handler
-    pub fn new(csv_str: &str) -> Self {
+    #[allow(clippy::result_unit_err)]
+    pub fn new(csv_str: &str) -> Result<Self, ()> {
         let mut local = HashMap::new();
 
         for record in csv::Reader::from_reader(csv_str.as_bytes())
@@ -18,7 +19,7 @@ impl Localization {
             );
         }
 
-        Self(local)
+        Ok(Self(local))
     }
 
     /// Finds a given line based on the key
@@ -26,7 +27,7 @@ impl Localization {
         self.0.get(line_key)
     }
 
-    /// Finds the right line based on the key
+    /// Finds the right line based on the key and then applies string subs as needed.
     pub fn line(&self, line: &crate::Line) -> Option<String> {
         let txt_base = self.0.get(&line.string_key)?;
 

@@ -7,7 +7,8 @@ fn main() {
     let mut storage = Storage::new();
 
     let mut yarn_runner = Runner::new(Program::new(PROGRAM_BYTES).unwrap());
-    let localization_handler = Localization::new(LOCAL_BYTES); // will need an unwrap here eventually instead of crashing on bad csv
+    // todo: this isn't a real error and we want to kill our csv dep
+    let localization_handler = Localization::new(LOCAL_BYTES).unwrap();
     yarn_runner.set_node("first_guy").unwrap();
     let console = dialoguer::console::Term::stderr();
 
