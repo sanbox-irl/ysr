@@ -1,14 +1,14 @@
 use ysr::{ExecutionOutput, Localization, Markup, Program, Runner, Storage};
 
 const PROGRAM_BYTES: &[u8] = include_bytes!("../test_input/test.yarnc");
-const LOCAL_BYTES: &str = include_str!("../test_input/test-Lines.csv");
+const LOCALIZATION: &str = include_str!("../test_input/test-Lines.csv");
 
 fn main() {
     let mut storage = Storage::new();
 
     let mut yarn_runner = Runner::new(Program::new(PROGRAM_BYTES).unwrap());
     // todo: this isn't a real error and we want to kill our csv dep
-    let localization_handler = Localization::new(LOCAL_BYTES).unwrap();
+    let localization_handler = Localization::new(LOCALIZATION).unwrap();
     yarn_runner.set_node("first_guy").unwrap();
     let console = dialoguer::console::Term::stderr();
 

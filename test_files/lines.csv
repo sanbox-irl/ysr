@@ -1,0 +1,8 @@
+id,text,file,node,lineNumber
+line:09d53cf,Narrator: This is a simple line of a dialogue.,test.yarn,first_guy,7
+line:029bafb,Character: Here are options.,test.yarn,first_guy,8
+line:037f467,"Great [wave]options[/wave], but let's [screen_shake/] stop.",test.yarn,opts,14
+line:08b2ff7,Give me $APPLES true?,test.yarn,opts,15
+line:0307fc5,The value of our rolled variable is {0}.,test.yarn,opts,18
+line:0c5ed9a,"Do you have any other [select value={0} jim=""character"" bob=""actors"" /] to show me?",test.yarn,opts,20
+line:061b2e2,Fancy them apples!,test.yarn,end_of_line,26
