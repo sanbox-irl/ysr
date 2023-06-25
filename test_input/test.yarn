@@ -15,7 +15,7 @@ position: -65,306
     -> Give me $APPLES true? #line:08b2ff7 
         << set $APPLES = true >>
         << set $ROLLED to dice(10)>>
-        The value of our rolled variable is {$ROLLED}. #line:0307fc5 
+        Here's a "quote" to show ya. #line:0307fc5 
         << jump opts >>
     -> Do you have any other [select value={$noun} jim="character" bob="actors" /] to show me? <<if $APPLES>> #line:0c5ed9a 
         <<jump end_of_line>>

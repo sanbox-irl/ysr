@@ -27,76 +27,71 @@ impl Localization {
             let mut file = None;
             let mut node = None;
 
-            println!("next line = `{}`", next_line);
-
             let mut in_quotation = false;
             let mut record_count = 0;
-            let mut record_starts = 0;
-            let mut had_quote = false;
+            let mut buf = String::new();
 
-            for (idx, chr) in next_line.char_indices() {
-                println!("chr = {}", chr);
+            let mut chars = next_line.chars().peekable();
+
+            while let Some(chr) = chars.next() {
                 match chr {
                     ',' => {
-                        println!("that's a comma! {} ({})", record_count, record_starts);
                         if in_quotation {
-                            // don't worry about it, we just vibe
+                            buf.push(',');
                         } else {
                             // janky as hell!
-                            let data = if had_quote {
-                                &next_line[record_starts + 1..idx - 1]
-                            } else {
-                                &next_line[record_starts..idx]
-                            };
-                            had_quote = false;
 
                             match record_count {
                                 // line id:
                                 0 => {
-                                    println!("setting id!");
-                                    id = Some(data.to_string());
+                                    id = Some(buf.clone());
                                 }
                                 // text:
                                 1 => {
-                                    text = Some(data.to_string());
+                                    text = Some(buf.clone());
                                 }
                                 // file:
                                 2 => {
-                                    file = Some(PathBuf::from(data));
+                                    file = Some(PathBuf::from(&buf));
                                 }
                                 // node name:
                                 3 => {
-                                    node = Some(data.to_string());
+                                    node = Some(buf.clone());
                                 }
                                 _ => return Err(LocalizationParseErr::ExtraRecord(row_idx)),
                             }
 
-                            record_starts = idx + 1;
+                            buf.clear();
                             record_count += 1;
                         }
                     }
                     '"' => {
-                        println!("flipping quote flag to {}", !in_quotation);
-                        in_quotation = !in_quotation;
-                        had_quote = true;
+                        // if it's an escaped quote, just bounce
+                        if let Some('"') = chars.peek() {
+                            // eat it, and we move on
+                            chars.next();
+
+                            buf.push('"');
+                        } else {
+                            in_quotation = !in_quotation;
+                        }
                     }
-                    _ => {
-                        // just vibe it out
+                    chr => {
+                        buf.push(chr);
                     }
                 }
             }
 
             // and pull the final bit out...
             let line_number = {
-                if record_starts == next_line.len() {
+                if buf.is_empty() {
                     return Err(LocalizationParseErr::Missing(
                         row_idx,
                         MissingKind::SrcLineNumber,
                     ));
                 }
 
-                let data = &next_line[record_starts..];
-                data.parse::<usize>()
+                buf.parse::<usize>()
                     .map_err(|e| LocalizationParseErr::CouldNotParseLineNumber(row_idx, e))?
             };
 
@@ -213,5 +208,11 @@ mod tests {
         assert_eq!(quoted_line.file.as_os_str(), "test.yarn");
         assert_eq!(quoted_line.node, "opts");
         assert_eq!(quoted_line.line_number, 14);
+
+        let double_quoted = local.0.get("line:0307fc5").unwrap();
+        assert_eq!(double_quoted.text, "Here's a \"quote\" to show ya.");
+        assert_eq!(double_quoted.file.as_os_str(), "test.yarn");
+        assert_eq!(double_quoted.node, "opts");
+        assert_eq!(double_quoted.line_number, 18);
     }
 }
