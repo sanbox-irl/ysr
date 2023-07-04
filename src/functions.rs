@@ -1,5 +1,3 @@
-use rand::Rng;
-
 use crate::{FuncData, Value};
 
 /// Processes a function if it's a built in function. To see a list of built in functions in Yarn, consult
@@ -30,13 +28,15 @@ pub fn process_built_in_function(
 /// If this returns `true`, then `process_built_in_functions` will always return `Some`. To that end,
 /// you can just run `process_built_in_functions` if that works for you.
 pub fn is_built_in_function(func_name: &str) -> bool {
+    // we have to check seperately for rand
+    if cfg!(feature = "rand") && matches!(func_name, "random" | "random_range" | "dice") {
+        return true;
+    }
+
     matches!(
         func_name,
         "visited"
             | "visited_count"
-            | "random"
-            | "random_range"
-            | "dice"
             | "round"
             | "round_places"
             | "floor"
@@ -145,12 +145,16 @@ fn handle_known_default_function(
                     .unwrap_or_default(),
             ))
         }
+        #[cfg(feature = "rand")]
         "random" => {
+            use rand::Rng;
             param_count_is(&func_data.parameters, 0)?;
 
             Ok(Value::F32(rand::thread_rng().gen_range(0.0..1.0)))
         }
+        #[cfg(feature = "rand")]
         "random_range" => {
+            use rand::Rng;
             param_count_is(&func_data.parameters, 2)?;
 
             let bottom = extract_f32(&func_data.parameters[0])?;
@@ -158,7 +162,9 @@ fn handle_known_default_function(
 
             Ok(Value::F32(rand::thread_rng().gen_range(bottom..top)))
         }
+        #[cfg(feature = "rand")]
         "dice" => {
+            use rand::Rng;
             param_count_is(&func_data.parameters, 1)?;
             let top = extract_f32(&func_data.parameters[0])? as u32;
 
