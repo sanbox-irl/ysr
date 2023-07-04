@@ -12,12 +12,13 @@ fn main() {
     yarn_runner.set_node("first_guy").unwrap();
     let console = dialoguer::console::Term::stderr();
 
-    while let Some(output) = yarn_runner.execute(&mut storage).unwrap() {
-        match output {
+    loop {
+        match yarn_runner.execute(&mut storage).unwrap() {
             ExecutionOutput::Line(line) => {
-                let text = localization_handler.line(&line).unwrap();
-                // and now we pass the markdown through the markdown fella...
-                let markup_output = Markup::new(&text).unwrap();
+                let markup_output = localization_handler
+                    .line_display_text(&line)
+                    .unwrap()
+                    .unwrap();
                 println!("{}", markup_output.clean_text);
 
                 // now wait for the user to hit enter
@@ -29,7 +30,9 @@ fn main() {
                 let mut selection = dialoguer::Select::new();
 
                 for opt in opts {
-                    let v = localization_handler.line(opt.line()).unwrap();
+                    let v = localization_handler
+                        .generate_markup_line(opt.line())
+                        .unwrap();
                     let markup_output = Markup::new(&v).unwrap();
 
                     let v = match opt.condition_passed() {
@@ -54,6 +57,9 @@ fn main() {
                     .unwrap();
 
                 yarn_runner.return_function(output).unwrap();
+            }
+            ExecutionOutput::Finished => {
+                break;
             }
         }
     }

@@ -21,7 +21,7 @@ use std::collections::HashMap;
 pub use byte_code::{Program, ProgramError};
 pub use functions::{is_built_in_function, process_built_in_function};
 pub use localization::Localization;
-pub use markup::Markup;
+pub use markup::*;
 pub use storage::Storage;
 
 /// A Virtual Machine which executes a [Program].
@@ -51,6 +51,10 @@ impl Runner {
     }
 
     /// Manually sets the node that we run. Returns `Ok` if a node by that name exists in the loaded `Program`.
+    ///
+    /// ## Errors
+    ///
+    /// Errors if the node does not exist in the program.
     pub fn set_node(&mut self, node_name: impl Into<String>) -> Result<(), NodeDoesNotExist> {
         let node_name = node_name.into();
 
@@ -92,12 +96,17 @@ impl Runner {
         Ok(())
     }
 
-    pub fn execute(
-        &mut self,
-        storage: &mut Storage,
-    ) -> Result<Option<ExecutionOutput>, ExecutionError> {
+    /// Attempts to move the state of the runner forward.
+    ///
+    /// ## Errors
+    ///
+    /// Errors if the dialogue runner is not in a valid state (either hasn't has a node set, is waiting for a function or a option to be select),
+    /// or internal yarn errors occur, such as trying to jump to a node which doesn't eixst, failing to convert values, unknown variable reads, etc.
+    pub fn execute(&mut self, storage: &mut Storage) -> Result<ExecutionOutput, ExecutionError> {
         let Some(mut state) = self.state.as_mut() else {
-            return Err(ExecutionError::NotReadyToExecute(NotReadyToExecute::NoNodeSelected));
+            return Err(ExecutionError::NotReadyToExecute(
+                NotReadyToExecute::NoNodeSelected,
+            ));
         };
 
         match self.waiting_status {
@@ -128,7 +137,9 @@ impl Runner {
             let instruction_count = state.instruction;
             state.instruction += 1;
 
-            let Some(instruction) = node.instructions.get(instruction_count) else { break };
+            let Some(instruction) = node.instructions.get(instruction_count) else {
+                break;
+            };
 
             match instruction {
                 Instruction::JumpTo(node_name) => {
@@ -139,7 +150,10 @@ impl Runner {
                 }
                 Instruction::JumpIfFalse(node_name) => {
                     let stack_top = state.stack.last().expect("is this possible?");
-                    if !stack_top.try_to_bool()? {
+                    if !stack_top
+                        .try_to_bool()
+                        .map_err(ScriptError::ConditionOnNonBool)?
+                    {
                         state.instruction = *node
                             .jump_table
                             .get(node_name)
@@ -158,10 +172,10 @@ impl Runner {
                         substitutions.push(state.stack.pop().expect("handle errr").to_string());
                     }
 
-                    return Ok(Some(ExecutionOutput::Line(Line {
+                    return Ok(ExecutionOutput::Line(Line {
                         string_key: line.string_key.clone(),
                         substitutions,
-                    })));
+                    }));
                 }
                 Instruction::Command(command_datas) => {
                     let mut substitutions = vec![];
@@ -174,7 +188,7 @@ impl Runner {
                         &substitutions,
                     );
 
-                    return Ok(Some(ExecutionOutput::Command(command)));
+                    return Ok(ExecutionOutput::Command(command));
                 }
                 Instruction::AddOption(option_data) => {
                     let mut substitutions = vec![];
@@ -185,12 +199,11 @@ impl Runner {
 
                     let condition_passed = if option_data.has_condition {
                         let output = state.stack.pop().expect("malformed stack");
-                        match output.try_to_bool() {
-                            Ok(v) => Some(v),
-                            Err(e) => {
-                                return Err(ExecutionError::ConditionOnNonBool(e));
-                            }
-                        }
+                        Some(
+                            output
+                                .try_to_bool()
+                                .map_err(ScriptError::ConditionOnNonBool)?,
+                        )
                     } else {
                         None
                     };
@@ -215,9 +228,7 @@ impl Runner {
                     ));
 
                     // give em da options!
-                    return Ok(Some(ExecutionOutput::Options(std::mem::take(
-                        &mut state.options,
-                    ))));
+                    return Ok(ExecutionOutput::Options(std::mem::take(&mut state.options)));
                 }
                 Instruction::PushString(str) => {
                     state.stack.push(Value::Str(str.clone()));
@@ -232,7 +243,13 @@ impl Runner {
                     state.stack.pop();
                 }
                 Instruction::CallFunc(function_name) => {
-                    let param_count = state.stack.pop().unwrap().try_to_f32()? as usize;
+                    let param_count = state
+                        .stack
+                        .pop()
+                        .unwrap()
+                        .try_to_f32()
+                        .map_err(ScriptError::ConversionError)?
+                        as usize;
 
                     let mut parameters = vec![];
 
@@ -242,10 +259,10 @@ impl Runner {
 
                     self.waiting_status = Some(WaitingStatus::FunctionReturn);
 
-                    return Ok(Some(ExecutionOutput::Function(FuncData {
+                    return Ok(ExecutionOutput::Function(FuncData {
                         function_name: function_name.clone(),
                         parameters,
-                    })));
+                    }));
                 }
                 Instruction::PushVar(v) => {
                     let value = match storage.get(v) {
@@ -254,7 +271,11 @@ impl Runner {
                             // okay let's check the default type listings
                             match self.program.initial_values.get(v) {
                                 Some(v) => v,
-                                None => return Err(ExecutionError::UnknownVariable(v.to_string())),
+                                None => {
+                                    return Err(ExecutionError::ScriptError(
+                                        ScriptError::UnknownVariable(v.to_string()),
+                                    ))
+                                }
                             }
                         }
                     };
@@ -288,7 +309,7 @@ impl Runner {
         }
 
         // This also means we reached the end of our program's execution!
-        Ok(None)
+        Ok(ExecutionOutput::Finished)
     }
 
     /// Tries to set the option selection.
@@ -315,6 +336,13 @@ impl Runner {
         Ok(())
     }
 
+    /// Returns the output of a function requested by the runner.
+    ///
+    /// ## Errors
+    ///
+    /// This errors only when the runner was not expecting a function value to be returned.
+    /// Note: we currently DO NOT have a way to know what type of value is expected, so an incorrect
+    /// type will result, likely, in a conversion error, or cascading errors, later on.
     pub fn return_function(&mut self, value: Value) -> Result<(), UnexpectedFunctionReturn> {
         let Some(WaitingStatus::FunctionReturn) = &self.waiting_status else {
             return Err(UnexpectedFunctionReturn);
@@ -362,6 +390,7 @@ pub enum ExecutionOutput {
     Options(Vec<YarnOption>),
     Command(String),
     Function(FuncData),
+    Finished,
 }
 
 /// The data of a function call, such as `<< if roll(6) >>`
@@ -410,6 +439,11 @@ impl std::fmt::Display for Value {
 
 impl Value {
     /// Converts a given value to a bool.
+    ///
+    /// ## Errors
+    ///
+    /// Returns a [ConversionError] when a string which is not `true`, `TRUE`, `false`, or `FALSE` is passed.
+    /// All other types do not have any error cases.
     pub fn try_to_bool(&self) -> Result<bool, ConversionError> {
         let v = match self {
             Value::Bool(v) => *v,
@@ -435,6 +469,10 @@ impl Value {
     }
 
     /// Converts a given value to a string.
+    ///
+    /// ## Errors
+    ///
+    /// Returns an error when `self` is a str which cannot be parsed via the std's str-f32 parsing.
     pub fn try_to_f32(&self) -> Result<f32, ConversionError> {
         let v = match self {
             Value::Bool(v) => {
@@ -500,16 +538,28 @@ pub enum ExecutionError {
     NotReadyToExecute(NotReadyToExecute),
 
     #[error(transparent)]
-    NodeDoesNotExist(#[from] NodeDoesNotExist),
+    ScriptError(#[from] ScriptError),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ScriptError {
+    #[error(transparent)]
+    NodeDoesNotExist(NodeDoesNotExist),
 
     #[error("condition requires variable to be bool, but it is not: {0}")]
     ConditionOnNonBool(ConversionError),
 
     #[error(transparent)]
-    ConversionError(#[from] ConversionError),
+    ConversionError(ConversionError),
 
     #[error("unknown variable binding `{0}`")]
     UnknownVariable(String),
+}
+
+impl From<NodeDoesNotExist> for ExecutionError {
+    fn from(value: NodeDoesNotExist) -> Self {
+        Self::ScriptError(ScriptError::NodeDoesNotExist(value))
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 const FIRST_LINE: &str = "id,text,file,node,lineNumber";
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Localization(HashMap<String, LineData>);
 
 impl Localization {
@@ -114,14 +114,26 @@ impl Localization {
         Ok(Self(local))
     }
 
-    /// Finds a given line based on the key
-    pub fn find_line(&self, line_key: &str) -> Option<&LineData> {
+    /// Finds a given line based on the key. This is used mostly internally.
+    pub fn line_data(&self, line_key: &str) -> Option<&LineData> {
         self.0.get(line_key)
     }
 
+    /// This convenience function finds and performs markup parsing in total.
+    /// Most users will only need to use this function, though users can independently
+    /// do all of this (it only invokes public functions).
+    pub fn line_display_text(
+        &self,
+        line: &crate::Line,
+    ) -> Option<Result<crate::Markup, crate::MarkupParseErr>> {
+        let generated_line = self.generate_markup_line(line)?;
+
+        Some(crate::Markup::new(&generated_line))
+    }
+
     /// Finds the right line based on the key and then applies string subs as needed.
-    pub fn line(&self, line: &crate::Line) -> Option<String> {
-        let txt_base = self.0.get(&line.string_key)?;
+    pub fn generate_markup_line(&self, line: &crate::Line) -> Option<String> {
+        let txt_base = self.line_data(&line.string_key)?;
 
         Some(crate::apply_arguments_in_substition(
             &txt_base.text,
@@ -130,7 +142,7 @@ impl Localization {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LineData {
     pub text: String,
     pub file: PathBuf,
