@@ -119,7 +119,10 @@ impl Program {
             let mut instructions = vec![];
             for (i, raw_instruction) in node.instructions.into_iter().enumerate() {
                 let Some(opcode) = instruction::OpCode::from_i32(raw_instruction.opcode) else {
-                    return Err(ProgramError::UnexpectedOpCode { found: raw_instruction.opcode, idx: i });
+                    return Err(ProgramError::UnexpectedOpCode {
+                        found: raw_instruction.opcode,
+                        idx: i,
+                    });
                 };
                 let mut operands = OperandHandler(
                     raw_instruction
@@ -222,30 +225,46 @@ impl Program {
         })
     }
 
+    /// The name of the program.
     pub fn name(&self) -> &str {
         self.name.as_ref()
     }
 }
 
+/// An error reading a program's bytecode stream.
 #[derive(Debug, thiserror::Error)]
 pub enum ProgramError {
+    /// An unexpected op code was found.
     #[error("unexpected opcode `{found}` at index `{idx}`")]
-    // it's an i32 since the C# emits i32s, and if it emits a negative number, it'd be good to know about that
-    UnexpectedOpCode { found: i32, idx: usize },
+    UnexpectedOpCode {
+        /// The unexpected upcode.
+        found: i32,
+        /// The index in the bytestream.
+        idx: usize,
+    },
 
+    /// We couldn't decode the bytestream Protobuf at all. This might mean a version incompatibility between this library and the ysc.
     #[error(transparent)]
     DecodeErr(prost::DecodeError),
 
+    /// Occurs only with ysc v1.0.
     #[error(
         "op-code {0} is no longer supported. please recompile your source with a newer compiler."
     )]
     UnsupportedOpCode(i32),
 
+    /// Unexpected operand kind found.
     #[error(transparent)]
     UnexpectedOperandKind(UnexpectedOperandKind),
 
-    #[error("unexpected operand kind at index `{idx}`: expected `{expected}`")]
-    MissingOperand { idx: usize, expected: &'static str },
+    /// Missing an operand at a given index.
+    #[error("missing operand kind at index `{idx}`: expected `{expected}`")]
+    MissingOperand {
+        /// The index of the missing operand
+        idx: usize,
+        /// The name of the operand expected.
+        expected: &'static str,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]

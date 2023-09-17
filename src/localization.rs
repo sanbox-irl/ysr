@@ -2,12 +2,24 @@ use std::{collections::HashMap, path::PathBuf};
 
 const FIRST_LINE: &str = "id,text,file,node,lineNumber";
 
+/// This is the Localization tool, created from a file like `test-Lines.csv`
 #[derive(Debug, Clone)]
 pub struct Localization(HashMap<String, LineData>);
 
 impl Localization {
-    /// Creates a new localization handler
-    #[allow(clippy::result_unit_err)]
+    /// Creates a new localization handler from a given `csv` input.
+    ///
+    /// The provided string should be from the `foo-Lines.csv` produced by the yarn-spinner-compiler.
+    /// 
+    /// ## Sample
+    ///
+    /// ```csv
+    /// id,text,file,node,lineNumber
+    /// line:09d53cf,Narrator: This is a simple line of a dialogue.,test.yarn,first_guy,7
+    /// line:029bafb,Character: Here are options.,test.yarn,first_guy,8
+    /// ```
+    ///
+    /// Note that the first line must be the header line.
     pub fn new(csv_str: &str) -> Result<Self, LocalizationParseErr> {
         let mut local = HashMap::new();
 
@@ -119,6 +131,16 @@ impl Localization {
         self.0.get(line_key)
     }
 
+    /// Finds the right line based on the key and then applies string subs as needed.
+    pub fn generate_markup_line(&self, line: &crate::Line) -> Option<String> {
+        let txt_base = self.line_data(&line.string_key)?;
+
+        Some(crate::apply_arguments_in_substition(
+            &txt_base.text,
+            &line.substitutions,
+        ))
+    }
+
     /// This convenience function finds and performs markup parsing in total.
     /// Most users will only need to use this function, though users can independently
     /// do all of this (it only invokes public functions).
@@ -129,16 +151,6 @@ impl Localization {
         let generated_line = self.generate_markup_line(line)?;
 
         Some(crate::Markup::new(&generated_line))
-    }
-
-    /// Finds the right line based on the key and then applies string subs as needed.
-    pub fn generate_markup_line(&self, line: &crate::Line) -> Option<String> {
-        let txt_base = self.line_data(&line.string_key)?;
-
-        Some(crate::apply_arguments_in_substition(
-            &txt_base.text,
-            &line.substitutions,
-        ))
     }
 }
 

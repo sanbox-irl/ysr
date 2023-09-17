@@ -15,9 +15,13 @@ const TRIM_WHITESPACE: &str = "trimwhitespace";
 const NO_MARKUP: &str = "nomarkup";
 const NO_MARKUP_END: &str = "[/nomarkup]";
 
+/// This struct contains the final text which should be shown to users, and any additional attributes
+/// that go along with it.
 #[derive(Debug)]
 pub struct Markup {
+    /// This text should be shown to users.
     pub clean_text: String,
+    /// These are the attributes which describe the clean text.
     pub attributes: Vec<Attribute>,
 }
 
@@ -374,20 +378,30 @@ impl Markup {
     }
 }
 
+/// An attribute is a quality, perhaps with parameters, which describes text. A simple parameter could have the name
+/// `bold`, and might have no [properties](Self::properties). See the [this page](<https://docs.yarnspinner.dev/getting-started/writing-in-yarn/markup#attributes>)
+/// for more information.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
+    /// The name of the attribute, such as `wave`
     pub name: String,
+    /// The range of the attribute. This is the range **in the clean text** found in [Attribute::clean_text], not for the input text.
     pub range: Range<usize>,
+    /// Properties, if any exist, for the given Attribute.
     pub properties: HashMap<String, MarkupValue>,
 }
 
 /// A markup value. Markup can have distinct integers from floats, so uses a different
-/// enumeration than [crate::YarnValue].
+/// enumeration than [Value](crate::Value).
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum MarkupValue {
+    /// An integer.
     I32(i32),
+    /// A floating point,
     F32(f32),
+    /// A string,
     String(String),
+    /// A bool.
     Bool(bool),
 }
 
@@ -435,23 +449,33 @@ impl std::fmt::Display for MarkupValue {
         }
     }
 }
+
+/// Errors parsing markup. This aren't caught by `ysc` at compile time, so this can
+/// happen at runtime.
 #[derive(Debug, thiserror::Error)]
 pub enum MarkupParseErr {
+    /// An attribute's `[` was not closed.
     #[error("attribute `{0}` was not closed")]
     AttributeNotClosed(String),
 
+    /// An unexpected `]` was given without a preceeding `[`.
     #[error("attribute `[/{0}]` was not open, so close was unexpected")]
     UnexpectedAttributeClose(String),
 
+    /// An explicit [character] tag is present and an implicit `:` character is present
     #[error("an explicit [character] tag is present and an implicit `:` character is present")]
     ExplicitCharacterAndImplicitCharacter,
 
+    /// An explicit [character] tag is present, but has malformed attributes. either no `name` is present, or it is not a string
     #[error("an explicit [character] tag is present, but has malformed attributes. either no `name` is present, or it is not a string")]
     ExplicitCharacterMalformed,
 
+    /// Markup ended unexpectedly
     #[error("markup ended unexpectedly")]
     UnexpectedEnd,
 
+    /// Programs can have their own attribute replacement modifiers -- if they so choose to do so, they can also report errors.
+    /// This is the catch-all for those errors.
     #[error("attribute encountered a replacement issue: {0}")]
     ReplacementMarkerIssue(#[from] Box<dyn Error>),
 }

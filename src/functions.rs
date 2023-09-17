@@ -1,7 +1,7 @@
 use crate::{FuncData, Value};
 
 /// Processes a function if it's a built in function. To see a list of built in functions in Yarn, consult
-/// (this_page)[https://docs.yarnspinner.dev/getting-started/writing-in-yarn/functions]. Additionally, some C# namespaced
+/// (this_page)[<https://docs.yarnspinner.dev/getting-started/writing-in-yarn/functions>]. Additionally, some C# namespaced
 /// functions are handled, particularly algebraic and logical functions.
 ///
 /// In practice, because you can define your own functions, you may with to adopt the following pattern:

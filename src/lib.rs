@@ -1,13 +1,13 @@
 #![doc = include_str!("../README.md")]
 #![deny(unsafe_code)]
 #![deny(rust_2018_idioms)]
-// #![deny(missing_docs)]
+#![deny(missing_docs)]
 #![warn(clippy::dbg_macro)]
 #![warn(clippy::print_stdout)]
-// #![deny(clippy::missing_errors_doc)]
-// #![warn(clippy::missing_panics_doc)]
 #![warn(clippy::todo)]
 #![deny(rustdoc::broken_intra_doc_links)]
+
+use std::collections::HashMap;
 
 mod byte_code;
 mod functions;
@@ -16,13 +16,13 @@ mod markup;
 mod proto;
 mod storage;
 
-use std::collections::HashMap;
-
 pub use byte_code::{Program, ProgramError};
 pub use functions::{is_built_in_function, process_built_in_function};
 pub use localization::Localization;
 pub use markup::*;
 pub use storage::Storage;
+
+use byte_code::Instruction;
 
 /// A Virtual Machine which executes a [Program].
 #[derive(Debug)]
@@ -34,9 +34,32 @@ pub struct Runner {
     state: Option<State>,
 }
 
+#[derive(Debug)]
+struct State {
+    node_name: String,
+    instruction: usize,
+    stack: Vec<Value>,
+    options: Vec<YarnOption>,
+}
+
 impl Runner {
-    /// Creates a new [Runner] with the given Program.
-    pub fn new(program: Program) -> Self {
+    /// Creates a new [Runner] with the given Program and a node to start on.
+    ///
+    /// ## Errors
+    ///
+    /// This errors when `starting_node` does not exist in the program.
+    pub fn new(
+        program: Program,
+        starting_node: impl Into<String>,
+    ) -> Result<Self, NodeDoesNotExist> {
+        let mut me = Self::without_starting_node(program);
+
+        me.set_node(starting_node).map(|()| me)
+    }
+
+    /// Creates a new [Runner] with the given Program and without a starting node.
+    /// You'll need to call [set_node](Self::set_node) before execution can start.
+    pub fn without_starting_node(program: Program) -> Self {
         Self {
             program,
             visited_nodes: HashMap::new(),
@@ -376,20 +399,22 @@ impl Runner {
     }
 }
 
-#[derive(Debug)]
-struct State {
-    node_name: String,
-    instruction: usize,
-    stack: Vec<Value>,
-    options: Vec<YarnOption>,
-}
-
+/// The output of the Runner. Contractually, different outputs require different gameplay
+/// patterns to occur, though you can always check the [WaitingStatus] with [Runner::waiting_status]
+/// to find what the Runner needs (if anything) before [Runner::execute] can be called succesfully again.
 #[derive(Debug)]
 pub enum ExecutionOutput {
+    /// A line to be displayed, though it should be ran through the Markup parser before display. You can run [Runner::execute] again
+    /// immediately.
     Line(Line),
+    /// Various options which the player can choose from. You must run [Runner::select_option] before [Runner::execute] can be ran again.
     Options(Vec<YarnOption>),
+    /// The command string which the player is trying to run. This string is unformatted and unprocessed, so can be anything. You can run
+    /// [Runner::execute] again immediately.
     Command(String),
+    /// A function and its parameters, already parsed lightly be the Runner. You must run [Runner::return_function] before [Runner::execute] can be ran again.
     Function(FuncData),
+    /// The program is finished. You must run [Runner::set_node] before [Runner::execute] can be ran again.
     Finished,
 }
 
@@ -493,35 +518,46 @@ impl Value {
     }
 }
 
+/// This is a Line given out by the Runner. You should hand this line over to [Localization::line_display_text]
+/// to convert this to text to show users.
+///
+/// In general, these fields are made public since editing them is risk-free, but users don't need to read these.
 // this is identical to `Line` in `bytecode` but I've made them separate types so
 // we have more flexibility with semver.
 #[derive(Debug)]
 pub struct Line {
-    pub(crate) string_key: String,
-    pub(crate) substitutions: Vec<String>,
+    /// The localization key id for the line.
+    pub string_key: String,
+    /// The subsitutions, if any, used in the line.
+    pub substitutions: Vec<String>,
 }
 
+/// This is a dialogue option. You should use [line](Self::line) to get a [Line] to show.
 #[derive(Debug)]
 pub struct YarnOption {
     pub(crate) line: Line,
     pub(crate) destination: String,
-
-    /// if `None`, then this line never had a condition. If Some, `true` if passed.
     pub(crate) condition_passed: Option<bool>,
 }
 
 impl YarnOption {
+    /// This is a Line given out by the Runner. You should hand this line over to [Localization::line_display_text]
+    /// to convert this to text to show users.
     pub fn line(&self) -> &Line {
         &self.line
     }
 
-    /// Returns an option if there is a condition at all.
+    /// Interpret the output as follows:
+    /// - `Some(true)`: conditions existed and were passed.
+    /// - `Some(false)`: conditions existed and were failed.
+    /// - `None`: conditions did not exist.
     pub fn condition_passed(&self) -> Option<bool> {
         self.condition_passed
     }
 }
 
-/// Applies substitutions to a given line as needed.
+/// Applies substitutions to a given line as needed. This is used internally but given as a utility for users
+/// if they want.
 pub fn apply_arguments_in_substition(f_string: &str, subs: &[String]) -> String {
     let mut output = f_string.to_owned();
 
@@ -532,26 +568,35 @@ pub fn apply_arguments_in_substition(f_string: &str, subs: &[String]) -> String 
     output
 }
 
+/// An execution error in the output of the Runner.
 #[derive(Debug, thiserror::Error)]
 pub enum ExecutionError {
+    /// The runner is waiting on something before it can execute.
     #[error(transparent)]
     NotReadyToExecute(NotReadyToExecute),
 
+    /// We had an error in the script itself.
     #[error(transparent)]
     ScriptError(#[from] ScriptError),
 }
 
+/// This class of error occurs when a script does something illegal which the ysc could not catch
+/// at compile time.
 #[derive(Debug, thiserror::Error)]
 pub enum ScriptError {
+    /// Tried to jump to a node which doesn't exist.
     #[error(transparent)]
     NodeDoesNotExist(NodeDoesNotExist),
 
+    /// Conditions requires variable to be a bool, but it wasn't.
     #[error("condition requires variable to be bool, but it is not: {0}")]
     ConditionOnNonBool(ConversionError),
 
+    /// We couldn't convert between two given types.
     #[error(transparent)]
     ConversionError(ConversionError),
 
+    /// An unknown variable was used.
     #[error("unknown variable binding `{0}`")]
     UnknownVariable(String),
 }
@@ -562,41 +607,57 @@ impl From<NodeDoesNotExist> for ExecutionError {
     }
 }
 
+/// A node does not exist of that name.
 #[derive(Debug, thiserror::Error)]
 #[error("A node of name {0} is not present in the currently loaded program.")]
 pub struct NodeDoesNotExist(String);
 
+/// The runner wasn't ready to be called.
 #[derive(Debug, thiserror::Error)]
 pub enum NotReadyToExecute {
+    /// The runner needs [select_option](Runner::select_option) to be called.
     #[error("waiting for option to be selected. call `select_option`")]
     WaitingForOptionSelection,
+    /// The runner needs [return_function](Runner::return_function) to be called.
     #[error("waiting for a function to return a value. call `return_function`")]
     WaitingForFunctionReturn,
+    /// No node was selected at all to start or `set_node` was not called.
     #[error("no node selected. call `set_node`")]
     NoNodeSelected,
 }
 
+/// We couldn't convert between two types.
 #[derive(Debug, thiserror::Error)]
 #[error("value of type `{target_type}` could not be converted to `{found_type}`")]
 pub struct ConversionError {
-    target_type: &'static str,
-    found_type: &'static str,
+    /// The type we wanted to convert to.
+    pub target_type: &'static str,
+    /// The type we found but could not convert to [target_type](Self::target_type).
+    pub found_type: &'static str,
 }
 
+/// Attempted to select an option incorrectly.
 #[derive(Debug, thiserror::Error)]
 pub enum OptionSelectionError {
+    /// The runner is not in state `WaitingForOptionSelection`, so this shouldn't have been called.
     #[error("runner is not in state `WaitingForOptionSelection`")]
     UnexpectedOptionSelection,
+
+    /// An option was set that is too high.
     #[error("invalid selection: {input} but len was {count}")]
-    OptionSelectionTooHigh { input: usize, count: usize },
+    OptionSelectionTooHigh {
+        /// The inputted sized.
+        input: usize,
+        /// The max size.
+        count: usize,
+    },
 }
 
+/// The runner is not in state `WaitingForFunctionReturn`, so this shouldn't have been called.
 #[derive(Debug, thiserror::Error)]
 #[error("runner is not in state `WaitingForFunctionReturn")]
 pub struct UnexpectedFunctionReturn;
 
-use byte_code::Instruction;
-// utility
 mod type_names {
     pub const F32: &str = "f32";
     pub const STR: &str = "str";
