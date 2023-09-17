@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn basic() {
-        const INPUT: &str = include_str!("../test_files/lines.csv");
+        const INPUT: &str = include_str!("./../assets/test-Lines.csv");
 
         let local = Localization::new(INPUT).unwrap();
         assert_eq!(local.0.len(), 7);

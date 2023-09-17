@@ -522,7 +522,9 @@ impl TokenStream<'_> {
 
     /// If on peek, the next token matches this, consume it. Returns true if we did it.
     fn consume_if(&mut self, predicate: impl Fn(char) -> bool) -> bool {
-        let Some((_, chr)) = self.peek() else { return false; };
+        let Some((_, chr)) = self.peek() else {
+            return false;
+        };
 
         if predicate(*chr) {
             self.next();
@@ -693,7 +695,7 @@ mod tests {
 
     #[test]
     fn escaped_sequences() {
-        assert!(Markup::new(r#"Here's some brackets \[ \]"#)
+        assert!(Markup::new(r"Here's some brackets \[ \]")
             .unwrap()
             .attributes
             .is_empty());
@@ -1212,7 +1214,7 @@ mod tests {
 
     #[test]
     fn escaping() {
-        let line = Markup::new(r#"[a]hello \[b\]hello\[/b\][/a]"#).unwrap();
+        let line = Markup::new(r"[a]hello \[b\]hello\[/b\][/a]").unwrap();
         assert_eq!(line.clean_text, "hello [b]hello[/b]");
         assert_eq!(line.attributes.len(), 1);
 

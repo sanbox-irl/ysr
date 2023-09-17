@@ -1,7 +1,7 @@
 use ysr::{ExecutionOutput, Localization, Markup, Program, Runner, Storage};
 
-const PROGRAM_BYTES: &[u8] = include_bytes!("../test_input/test.yarnc");
-const LOCALIZATION: &str = include_str!("../test_input/test-Lines.csv");
+const PROGRAM_BYTES: &[u8] = include_bytes!("../assets/test.yarnc");
+const LOCALIZATION: &str = include_str!("../assets/test-Lines.csv");
 
 fn main() {
     let mut storage = Storage::new();
