@@ -4,11 +4,10 @@ const PROGRAM_BYTES: &[u8] = include_bytes!("../assets/test.yarnc");
 const LOCALIZATION: &str = include_str!("../assets/test-Lines.csv");
 
 fn main() {
+    let mut yarn_runner = Runner::new(Program::new(PROGRAM_BYTES).unwrap(), "first_guy").unwrap();
+    let localization_handler = Localization::new(LOCALIZATION).unwrap();
     let mut storage = Storage::new();
 
-    let mut yarn_runner = Runner::new(Program::new(PROGRAM_BYTES).unwrap(), "first_guy").unwrap();
-    // todo: this isn't a real error and we want to kill our csv dep
-    let localization_handler = Localization::new(LOCALIZATION).unwrap();
     let console = dialoguer::console::Term::stderr();
 
     loop {
