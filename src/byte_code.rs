@@ -229,6 +229,21 @@ impl Program {
     pub fn name(&self) -> &str {
         self.name.as_ref()
     }
+
+    /// The node names present within the program.
+    pub fn nodes(&self) -> impl Iterator<Item = &str> {
+        self.nodes.keys().map(|v| v.as_str())
+    }
+
+    /// The initial values in the program.
+    pub fn initial_values(&self) -> &HashMap<String, Value> {
+        &self.initial_values
+    }
+
+    /// Mutable access to the initial values of the program. You can edit them at will here.
+    pub fn initial_values_mut(&mut self) -> &mut HashMap<String, Value> {
+        &mut self.initial_values
+    }
 }
 
 /// An error reading a program's bytecode stream.
